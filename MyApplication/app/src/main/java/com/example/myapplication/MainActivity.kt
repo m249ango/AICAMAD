@@ -23,6 +23,11 @@ import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,6 +35,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var objectDetector: ObjectDetector? = null
     private var isObjectDetectionEnabled = true
+
+    // 사진 촬영을 위한 변수
+    private var imageCapture: ImageCapture? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,8 +87,7 @@ class MainActivity : AppCompatActivity() {
             id = View.generateViewId()
             background = shutterDrawable
             setOnClickListener {
-                val mode = if (isObjectDetectionEnabled) "사물" else "풍경"
-                Toast.makeText(context, "[$mode] 촬영 성공", Toast.LENGTH_SHORT).show()
+                takePhoto()
             }
         }
 
@@ -96,6 +103,46 @@ class MainActivity : AppCompatActivity() {
         binding.root.addView(captureButton, params)
     }
 
+    // 사진 촬영 핵심 함수
+    private fun takePhoto() {
+        val imageCapture = imageCapture ?: return
+
+        // 파일 이름
+        val name = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
+            .format(System.currentTimeMillis())
+
+        // MediaStore 설정 (MyApplication 앨범 갤러리 표시)
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MyApplication")
+            }
+        }
+
+        // 저장 옵션 설정
+        val outputOptions = ImageCapture.OutputFileOptions
+            .Builder(contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            .build()
+
+        // 실제 촬영 및 저장
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val msg = "사진 저장 성공: ${output.savedUri}"
+                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                    Log.d("CameraApp", msg)
+                }
+
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e("CameraApp", "사진 저장 실패: ${exc.message}", exc)
+                }
+            }
+        )
+    }
+
     private fun startCamera() {
         cameraExecutor.execute { setupObjectDetector() }
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -103,6 +150,13 @@ class MainActivity : AppCompatActivity() {
             val cameraProvider = cameraProviderFuture.get()
             val preview = Preview.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).build()
                 .also { it.setSurfaceProvider(binding.viewFinder.surfaceProvider) }
+
+            // ImageCapture 설정 추가
+            imageCapture = ImageCapture.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY) // 속도 우선 모드
+                .build()
+
             val imageAnalysis = ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888).build()
@@ -111,7 +165,13 @@ class MainActivity : AppCompatActivity() {
             }
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis)
+                cameraProvider.bindToLifecycle(
+                    this,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageAnalysis,
+                    imageCapture
+                )
             } catch (exc: Exception) {
                 Log.e("MainActivity", "Camera binding failed", exc)
             }
@@ -119,23 +179,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupObjectDetector() {
-        val baseOptions = BaseOptions.builder().setModelAssetPath("efficientdet_lite0.tflite").setDelegate(Delegate.CPU).build() // 다운로드한 mediaPipe 모델
-        val options = ObjectDetector.ObjectDetectorOptions.builder().setBaseOptions(baseOptions).setScoreThreshold(0.5f)
+        val baseOptions = BaseOptions.builder().setModelAssetPath("efficientdet_lite0.tflite")
+            .setDelegate(Delegate.CPU).build() // 다운로드한 mediaPipe 모델
+        val options = ObjectDetector.ObjectDetectorOptions.builder().setBaseOptions(baseOptions)
+            .setScoreThreshold(0.5f)
             .setRunningMode(com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM)
-            .setResultListener { result, _ -> runOnUiThread { if (isObjectDetectionEnabled) binding.overlayView.setResults(result) } }.build()
+            .setResultListener { result, _ ->
+                runOnUiThread {
+                    if (isObjectDetectionEnabled) binding.overlayView.setResults(
+                        result
+                    )
+                }
+            }.build()
         objectDetector = ObjectDetector.createFromOptions(this, options)
     }
 
     private fun detectObjects(imageProxy: ImageProxy) {
-        if (objectDetector == null) { imageProxy.close(); return }
+        if (objectDetector == null) {
+            imageProxy.close(); return
+        }
         val bitmap = imageProxy.toBitmap()
         val matrix = Matrix().apply { postRotate(imageProxy.imageInfo.rotationDegrees.toFloat()) }
-        val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        objectDetector?.detectAsync(BitmapImageBuilder(rotatedBitmap).build(), System.currentTimeMillis())
+        val rotatedBitmap =
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        objectDetector?.detectAsync(
+            BitmapImageBuilder(rotatedBitmap).build(),
+            System.currentTimeMillis()
+        )
         imageProxy.close()
     }
 
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all { ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED }
-    override fun onDestroy() { super.onDestroy(); cameraExecutor.shutdown(); objectDetector?.close() }
-    companion object { private const val REQUEST_CODE_PERMISSIONS = 10; private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA) }
+    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(
+            baseContext,
+            it
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    override fun onDestroy() {
+        super.onDestroy(); cameraExecutor.shutdown(); objectDetector?.close()
+    }
+
+    companion object {
+        private const val REQUEST_CODE_PERMISSIONS = 10;
+        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+    }
 }
