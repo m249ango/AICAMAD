@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupShutterButton() { // 촬영 버튼: 메시지만
+    private fun setupShutterButton() { // 촬영 버튼
         val shutterDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.WHITE)
@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
             // ImageCapture 설정 추가
             imageCapture = ImageCapture.Builder()
                 .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY) // 속도 우선 모드
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY) // 최소지연 모드
                 .build()
 
             val imageAnalysis = ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3)
@@ -207,6 +207,25 @@ class MainActivity : AppCompatActivity() {
             System.currentTimeMillis()
         )
         imageProxy.close()
+    }
+
+    private fun updateTotalScore(score: Int) { // 점수 업뎃
+        runOnUiThread {
+            val formattedScore = String.format("%3d%%", score) // 결과 예시: "  0%", " 90%", "100%"
+            binding.tvTotalScore.text = formattedScore
+
+            // 점수대별 색상 변경
+            val color = when {
+                score < 60 -> Color.parseColor("#FF5252")
+                score < 80 -> Color.parseColor("#FFD740")
+                else -> Color.parseColor("#69F0AE")
+            }
+            binding.tvTotalScore.setTextColor(color)
+
+            // 테두리 색상도 맞춤
+            val background = binding.scoreLayout.background as GradientDrawable
+            background.setStroke(2, color)
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
