@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
-    <!--상단 블박-->
+
+    <!-- 상단 모드 버튼 바 -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -15,7 +16,7 @@
         android:paddingTop="30dp"
         android:paddingBottom="20dp"
         app:layout_constraintTop_toTopOf="parent">
-        <!--사물&배경 모드-->
+
         <ImageButton
             android:id="@+id/btnObjectMode"
             android:layout_width="@dimen/mode_icon_size"
@@ -37,14 +38,17 @@
             android:alpha="0.5"
             app:tint="@android:color/white" />
     </LinearLayout>
-    <!-- 점수 판 -->
+
+    <!-- 점수 판 — viewFinder 우상단에 오버레이 -->
     <LinearLayout
         android:id="@+id/scoreLayout"
-        android:layout_width="100dp"      android:layout_height="45dp"
+        android:layout_width="100dp"
+        android:layout_height="45dp"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="12dp"
         android:background="@drawable/score_background"
-        android:gravity="center"         android:elevation="10dp"
+        android:gravity="center"
+        android:elevation="10dp"
         app:layout_constraintEnd_toEndOf="@id/viewFinder"
         app:layout_constraintTop_toTopOf="@id/viewFinder">
 
@@ -52,13 +56,15 @@
             android:id="@+id/tvTotalScore"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="0%"             android:textColor="#FFFFFF"
+            android:text="0%"
+            android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:fontFamily="monospace" android:includeFontPadding="false" />
+            android:fontFamily="monospace"
+            android:includeFontPadding="false" />
     </LinearLayout>
 
-    <!-- 프리뷰&오버레이 -->
+    <!-- 카메라 프리뷰 -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
@@ -69,13 +75,67 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:scaleType="fitCenter" />
 
+    <!-- 바운딩 박스 오버레이 — viewFinder 와 동일 영역 -->
     <com.example.myapplication.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:clickable="true"
         app:layout_constraintTop_toTopOf="@id/viewFinder"
         app:layout_constraintBottom_toBottomOf="@id/viewFinder"
         app:layout_constraintStart_toStartOf="@id/viewFinder"
         app:layout_constraintEnd_toEndOf="@id/viewFinder" />
+
+    <!-- 구도 가이드 박스 오버레이 — viewFinder 와 동일 영역 -->
+    <com.example.myapplication.GuideOverlayView
+        android:id="@+id/guideOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        android:clickable="false"
+        app:layout_constraintTop_toTopOf="@id/viewFinder"
+        app:layout_constraintBottom_toBottomOf="@id/viewFinder"
+        app:layout_constraintStart_toStartOf="@id/viewFinder"
+        app:layout_constraintEnd_toEndOf="@id/viewFinder" />
+
+    <!--
+        구도 선택 버튼 + 포커스 해제 버튼
+        — viewFinder 상단 좌측에 오버레이 (하단 내비게이션 바와 겹치지 않음)
+        — 피사체 선택 전에는 GONE, 선택 후 VISIBLE
+        — elevation으로 모든 오버레이보다 위에 표시
+    -->
+    <LinearLayout
+        android:id="@+id/compositionBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="8dp"
+        android:elevation="15dp"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- 구도 유형 선택 (팝업 메뉴) -->
+        <Button
+            android:id="@+id/btnComposition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_composition"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:backgroundTint="#FFE94560"
+            android:layout_marginEnd="6dp" />
+
+        <!-- 피사체 포커스 해제 -->
+        <Button
+            android:id="@+id/btnUnfocus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_unfocus"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:backgroundTint="#FF555555" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
