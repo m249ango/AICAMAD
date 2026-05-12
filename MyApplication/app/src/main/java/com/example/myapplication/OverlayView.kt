@@ -170,6 +170,10 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_DOWN) return true
 
+        // 추적 모드에서는 다른 피사체 선택을 차단한다.
+        // 포커스를 변경하려면 반드시 "포커스 해제" 버튼을 먼저 눌러야 한다.
+        if (trackedBox != null) return true
+
         // 화면 좌표 → 480×640 이미지 좌표 역변환
         val imageX = event.x / width  * MODEL_W
         val imageY = event.y / height * MODEL_H

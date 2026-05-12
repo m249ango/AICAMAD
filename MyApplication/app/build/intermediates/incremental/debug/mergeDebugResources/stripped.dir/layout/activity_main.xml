@@ -39,31 +39,6 @@
             app:tint="@android:color/white" />
     </LinearLayout>
 
-    <!-- 점수 판 — viewFinder 우상단에 오버레이 -->
-    <LinearLayout
-        android:id="@+id/scoreLayout"
-        android:layout_width="100dp"
-        android:layout_height="45dp"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="12dp"
-        android:background="@drawable/score_background"
-        android:gravity="center"
-        android:elevation="10dp"
-        app:layout_constraintEnd_toEndOf="@id/viewFinder"
-        app:layout_constraintTop_toTopOf="@id/viewFinder">
-
-        <TextView
-            android:id="@+id/tvTotalScore"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="0%"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:fontFamily="monospace"
-            android:includeFontPadding="false" />
-    </LinearLayout>
-
     <!-- 카메라 프리뷰 -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"

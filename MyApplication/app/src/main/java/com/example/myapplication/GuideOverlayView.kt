@@ -91,6 +91,22 @@ class GuideOverlayView @JvmOverloads constructor(
     }
 
     /**
+     * 매칭 상태를 유지한 채 가이드 박스 위치·크기만 갱신한다.
+     *
+     * [기여] MATCHED/RECOMMEND 상태 보존 버그 수정.
+     * setGuide()는 항상 IDLE로 리셋하므로, 추적 모드의 프레임 주기 갱신에는
+     * 이 메서드를 사용해야 타이머가 초기화되지 않는다.
+     *
+     * @param box         새 가이드 박스 (480×640 픽셀 좌표계)
+     * @param composition 선택된 구도 유형
+     */
+    fun updateGuideBox(box: RectF, composition: Composition) {
+        this.targetBox   = box
+        this.composition = composition
+        invalidate()   // matchState 는 변경하지 않는다
+    }
+
+    /**
      * 매칭 상태를 업데이트한다. MainActivity의 타이머가 상태를 제어한다.
      * MATCHED 상태에만 펄스 애니메이션을 실행한다.
      */

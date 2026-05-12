@@ -517,7 +517,10 @@ class MainActivity : AppCompatActivity() {
                 if (comp != null) {
                     val newGuide = CompositionGuideCalculator.computeTargetBox(trackedBox, comp)
                     guideBox = newGuide
-                    binding.guideOverlay.setGuide(newGuide, comp)
+                    // setGuide() 대신 updateGuideBox() 사용 — matchState를 IDLE로 리셋하지 않음.
+                    // setGuide()를 쓰면 MATCHED 타이머가 매 FRAME_UPDATE_INTERVAL 프레임마다
+                    // 강제로 초기화되어 2초 조건이 절대 충족되지 않는 버그가 생긴다.
+                    binding.guideOverlay.updateGuideBox(newGuide, comp)
                 }
             }
         }
@@ -537,25 +540,6 @@ class MainActivity : AppCompatActivity() {
             System.currentTimeMillis()
         )
         imageProxy.close()
-    }
-
-    // ── 유틸 ────────────────────────────────────────────────────────────────────
-
-    private fun updateTotalScore(score: Int) {
-        runOnUiThread {
-            val formattedScore = String.format("%3d%%", score)
-            binding.tvTotalScore.text = formattedScore
-
-            val color = when {
-                score < 60 -> Color.parseColor("#FF5252")
-                score < 80 -> Color.parseColor("#FFD740")
-                else       -> Color.parseColor("#69F0AE")
-            }
-            binding.tvTotalScore.setTextColor(color)
-
-            val background = binding.scoreLayout.background as GradientDrawable
-            background.setStroke(2, color)
-        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
