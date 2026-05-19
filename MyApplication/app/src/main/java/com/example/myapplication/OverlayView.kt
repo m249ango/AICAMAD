@@ -17,8 +17,14 @@ import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
  * - **일반 모드** ([trackedBox] == null): 감지된 모든 박스를 그린다.
  *   [selectedIndex]에 해당하는 박스는 빨간 강조 스타일로 표시된다.
  * - **추적 모드** ([trackedBox] != null): [trackedBox] 하나만 그린다.
- *   MainActivity가 [FRAME_UPDATE_INTERVAL] 프레임마다 [setTrackedBox]를 호출하여
- *   박스 위치·크기가 급격히 떨리지 않고 안정적으로 표시된다.
+ *   MainActivity가 N 프레임마다 [setTrackedBox]로 위치를 갱신하므로
+ *   화면 박스가 급격히 떨리지 않고 부드럽게 유지된다.
+ *
+ * ## 터치 선택 로직
+ * - 터치 지점에 객체가 1개 → [onDetectionSelected] 콜백으로 즉시 선택.
+ * - 터치 지점에 객체가 2개 이상 → [onMultipleDetectionsFound] 콜백으로 후보 목록 전달.
+ *   MainActivity에서 [ListPopupWindow]를 띄워 사용자가 원하는 객체를 고를 수 있도록 한다.
+ * - 추적 모드 중에는 새 선택 터치가 차단된다.
  *
  * ## 좌표계
  * 바운딩 박스는 480×640 픽셀 좌표계 기준.
@@ -65,28 +71,42 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     /**
      * 추적 모드에서 그릴 박스 (480×640 이미지 좌표계).
      * null이면 일반 모드(전체 박스 표시), null이 아니면 추적 모드(이 박스만 표시).
-     *
-     * [기여] 선택된 피사체만 표시하는 추적 모드 도입.
      */
     private var trackedBox: RectF? = null
 
     /** 추적 모드에서 박스 위에 표시할 라벨 문자열 */
     private var trackedLabel: String? = null
 
+    // ── 콜백 ──────────────────────────────────────────────────────────────────
+
     /**
-     * 박스 터치 이벤트 콜백.
-     *
-     * [기여] 구도 모드 신규 도입 — 피사체 선택 경로.
+     * 터치 지점에 객체가 정확히 1개 있을 때 호출되는 콜백.
      * 파라미터: (리스트 인덱스, 바운딩 박스 480×640, 라벨 문자열)
      */
     var onDetectionSelected: ((index: Int, box: RectF, label: String) -> Unit)? = null
+
+    /**
+     * 터치 지점에 객체가 2개 이상 겹쳐 있을 때 호출되는 콜백.
+     *
+     * [기여] 중첩 객체 선택 UI 도입.
+     * MainActivity는 이 콜백을 받아 [ListPopupWindow]로 선택 UI를 표시한다.
+     *
+     * @param candidates  터치 지점을 포함하는 모든 감지 후보 목록
+     * @param touchViewX  OverlayView 내 터치 X 좌표 (화면 픽셀, 팝업 위치 계산용)
+     * @param touchViewY  OverlayView 내 터치 Y 좌표 (화면 픽셀, 팝업 위치 계산용)
+     */
+    var onMultipleDetectionsFound: ((
+        candidates: List<DetectionCandidate>,
+        touchViewX: Float,
+        touchViewY: Float
+    ) -> Unit)? = null
 
     // ── 공개 API ────────────────────────────────────────────────────────────────
 
     /**
      * 새 감지 결과를 반영한다.
-     * 추적 모드([trackedBox] != null)에서는 결과가 업데이트되어도
-     * [onDraw]가 [trackedBox]만 그리므로 시각적 변화가 없다.
+     * 추적 모드([trackedBox] != null)에서는 [results]가 업데이트되어도
+     * [onDraw]에서 [trackedBox]만 그리므로 시각적 변화가 없다.
      */
     fun setResults(detectionResults: ObjectDetectorResult) {
         results = detectionResults
@@ -96,23 +116,21 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     /**
      * 추적 모드로 전환하고 표시할 박스를 지정한다.
      *
-     * [기여] 선택된 피사체만 표시하는 추적 모드 도입.
      * MainActivity의 [FRAME_UPDATE_INTERVAL] 프레임 주기로 호출되어
      * 박스 위치·크기가 급격히 변동하지 않도록 한다.
      *
      * @param box   표시할 박스 (480×640 이미지 좌표계). null이면 일반 모드로 복귀.
-     * @param label 박스 위에 표시할 라벨. null이면 라벨만 생략.
+     * @param label 박스 위에 표시할 라벨. null이면 라벨 없음.
      */
     fun setTrackedBox(box: RectF?, label: String?) {
-        trackedBox  = box
+        trackedBox   = box
         trackedLabel = label
         invalidate()
     }
 
     /**
      * 선택 및 추적 상태를 모두 초기화하고 일반 모드(전체 박스 표시)로 복귀한다.
-     *
-     * [기여] 포커스 해제 버튼 기능 도입.
+     * 포커스 해제 버튼 클릭 시 MainActivity에서 호출한다.
      */
     fun clearSelection() {
         selectedIndex = -1
@@ -143,7 +161,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
                 val rect = RectF(detection.boundingBox()).toScreen()
 
                 if (index == selectedIndex) {
-                    // 선택된 박스: 반투명 채우기 + 빨간 테두리
                     canvas.drawRect(rect, selectedFillPaint)
                     canvas.drawRect(rect, selectedBoxPaint)
                 } else {
@@ -161,35 +178,57 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     // ── 터치 처리 ──────────────────────────────────────────────────────────────
 
     /**
-     * 터치한 위치에 바운딩 박스가 있으면 [onDetectionSelected] 콜백을 호출한다.
+     * 터치 지점의 바운딩 박스를 수집하여 후보 수에 따라 처리를 분기한다.
      *
-     * [기여] 구도 모드 신규 도입 — 피사체 터치 선택 기능.
-     * 터치 좌표를 480×640 이미지 좌표로 역변환 후 각 박스의 포함 여부를 확인한다.
-     * 추적 모드 중에도 터치가 오면 새 피사체를 선택할 수 있도록 항상 [results]를 탐색한다.
+     * - 0개: 빈 영역 터치 — 아무 동작 없음
+     * - 1개: [onDetectionSelected]로 즉시 선택
+     * - 2개 이상: [onMultipleDetectionsFound]로 후보 목록 전달
+     *
+     * 추적 모드([trackedBox] != null) 중에는 새 선택을 차단한다.
+     * 포커스를 변경하려면 "포커스 해제" 버튼을 먼저 눌러야 한다.
      */
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_DOWN) return true
 
-        // 추적 모드에서는 다른 피사체 선택을 차단한다.
-        // 포커스를 변경하려면 반드시 "포커스 해제" 버튼을 먼저 눌러야 한다.
+        // 추적 모드에서는 다른 피사체 선택을 차단한다
         if (trackedBox != null) return true
 
         // 화면 좌표 → 480×640 이미지 좌표 역변환
         val imageX = event.x / width  * MODEL_W
         val imageY = event.y / height * MODEL_H
 
+        // 터치 지점을 포함하는 모든 박스를 수집
+        val hits = mutableListOf<DetectionCandidate>()
         results?.detections()?.forEachIndexed { index, detection ->
             if (detection.boundingBox().contains(imageX, imageY)) {
-                selectedIndex = index
-                val box   = RectF(detection.boundingBox())
-                val label = detection.categories().firstOrNull()?.categoryName() ?: "unknown"
-                onDetectionSelected?.invoke(index, box, label)
-                invalidate()
-                return true
+                val category = detection.categories().firstOrNull()
+                hits.add(
+                    DetectionCandidate(
+                        index = index,
+                        label = category?.categoryName() ?: "unknown",
+                        score = ((category?.score() ?: 0f) * 100).toInt(),
+                        box   = RectF(detection.boundingBox())
+                    )
+                )
             }
         }
 
-        return true  // 박스 외 영역도 소비 — ACTION_DOWN이 항상 이 View에 전달되도록 보장
+        when (hits.size) {
+            0    -> { /* 빈 영역 터치 — 무시 */ }
+            1    -> {
+                // 단일 객체 — 즉시 선택
+                val hit = hits[0]
+                selectedIndex = hit.index
+                onDetectionSelected?.invoke(hit.index, hit.box, hit.label)
+                invalidate()
+            }
+            else -> {
+                // 복수 객체 중첩 — 선택 UI를 MainActivity에 위임
+                onMultipleDetectionsFound?.invoke(hits, event.x, event.y)
+            }
+        }
+
+        return true  // ACTION_DOWN을 항상 소비하여 이 View가 이후 이벤트도 수신하도록 보장
     }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
@@ -202,3 +241,20 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         bottom / MODEL_H * height
     )
 }
+
+/**
+ * 터치 지점에 중첩된 감지 후보 하나를 나타내는 데이터 클래스.
+ *
+ * [기여] 중첩 객체 선택 UI 도입 — [OverlayView.onMultipleDetectionsFound] 콜백에서 사용.
+ *
+ * @param index 감지 결과 리스트에서의 인덱스 (OverlayView.selectedIndex 설정에 사용)
+ * @param label 카테고리 이름 (예: "cat", "person")
+ * @param score 신뢰도 점수 0~100 (팝업 항목 표시용)
+ * @param box   바운딩 박스 (480×640 이미지 좌표계)
+ */
+data class DetectionCandidate(
+    val index: Int,
+    val label: String,
+    val score: Int,
+    val box:   RectF
+)

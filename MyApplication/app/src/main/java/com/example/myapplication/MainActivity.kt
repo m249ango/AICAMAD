@@ -9,9 +9,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.appcompat.widget.ListPopupWindow
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -211,34 +213,102 @@ class MainActivity : AppCompatActivity() {
     // ── OverlayView 터치 콜백 설정 ────────────────────────────────────────────
 
     /**
-     * OverlayView의 터치 콜백을 등록한다.
+     * OverlayView의 터치 콜백 두 가지를 등록한다.
      *
-     * 사용자가 바운딩 박스를 터치하면:
-     * 1. 선택된 피사체 정보(라벨, 중심)를 저장한다.
-     * 2. OverlayView를 추적 모드로 전환하여 선택된 박스만 표시한다.
-     * 3. compositionBar를 노출한다.
-     * 4. 구도가 이미 선택된 상태라면 가이드 박스를 즉시 재계산한다.
+     * - [OverlayView.onDetectionSelected]: 터치 지점에 객체 1개 → [selectSubject]로 즉시 선택.
+     * - [OverlayView.onMultipleDetectionsFound]: 터치 지점에 객체 2개 이상 → [showCandidatePopup]
+     *   으로 사용자에게 선택을 위임한다.
+     *
+     * [기여] 중첩 객체 선택 UI 도입 — 복수 후보 처리 분기 추가.
      */
     private fun setupOverlayTouchCallback() {
-        binding.overlayView.onDetectionSelected = { _, box, label ->
-            selectedSubjectLabel = label
-            lastKnownCenter      = PointF(box.centerX(), box.centerY())
-            frameCounter         = 0  // 새 피사체 선택 시 프레임 카운터 초기화
-
-            // OverlayView → 추적 모드: 선택된 박스만 표시
-            binding.overlayView.setTrackedBox(box, label)
-
-            // compositionBar 노출 (구도 선택 + 포커스 해제 버튼)
-            binding.compositionBar.visibility = View.VISIBLE
-
-            // 구도가 이미 선택된 상태라면 가이드 즉시 갱신
-            val comp = selectedComposition
-            if (comp != null) {
-                showGuide(box, comp)
-            } else {
-                clearGuide()
-            }
+        // 단일 객체 터치 — 즉시 선택
+        binding.overlayView.onDetectionSelected = { index, box, label ->
+            selectSubject(index, box, label)
         }
+
+        // 복수 객체 중첩 터치 — 팝업으로 선택 위임
+        binding.overlayView.onMultipleDetectionsFound = { candidates, touchX, touchY ->
+            showCandidatePopup(candidates, touchX, touchY)
+        }
+    }
+
+    /**
+     * 피사체를 선택하고 추적 모드를 시작한다.
+     *
+     * 단일 터치([OverlayView.onDetectionSelected])와 팝업 선택([showCandidatePopup]) 모두
+     * 이 함수를 통해 동일한 선택 로직을 실행하도록 공통화한다.
+     *
+     * [기여] 중첩 객체 선택 UI 도입 — 선택 로직을 공통 함수로 분리.
+     *
+     * @param index OverlayView.selectedIndex 에 설정할 감지 결과 인덱스
+     * @param box   피사체 바운딩 박스 (480×640 이미지 좌표계)
+     * @param label 카테고리 라벨
+     */
+    private fun selectSubject(index: Int, box: RectF, label: String) {
+        selectedSubjectLabel = label
+        lastKnownCenter      = PointF(box.centerX(), box.centerY())
+        frameCounter         = 0
+
+        // OverlayView → 추적 모드: 선택된 박스만 표시
+        binding.overlayView.selectedIndex = index
+        binding.overlayView.setTrackedBox(box, label)
+
+        // compositionBar 노출 (구도 선택 + 포커스 해제 버튼)
+        binding.compositionBar.visibility = View.VISIBLE
+
+        // 구도가 이미 선택된 상태라면 가이드 즉시 갱신
+        val comp = selectedComposition
+        if (comp != null) showGuide(box, comp) else clearGuide()
+    }
+
+    /**
+     * 중첩된 감지 후보 목록을 [ListPopupWindow]로 표시하여 사용자가 원하는 객체를 선택하게 한다.
+     *
+     * 팝업은 터치 지점 근처에 나타나며, 각 항목은 "라벨명  신뢰도%" 형식으로 표시된다.
+     * 항목 선택 시 [selectSubject]를 호출하여 해당 피사체를 추적 모드로 전환한다.
+     * 팝업 외부를 터치하면 자동으로 닫힌다.
+     *
+     * [기여] 중첩 객체 선택 UI 신규 도입.
+     *
+     * @param candidates 터치 지점에 중첩된 감지 후보 목록
+     * @param touchX     OverlayView 내 터치 X 좌표 (팝업 수평 위치 계산용)
+     * @param touchY     OverlayView 내 터치 Y 좌표 (팝업 수직 위치 계산용)
+     */
+    private fun showCandidatePopup(
+        candidates: List<DetectionCandidate>,
+        touchX: Float,
+        touchY: Float
+    ) {
+        // 팝업 항목 문자열: "고양이  87%" 형식
+        val displayItems = candidates.map { "${it.label}  ${it.score}%" }
+
+        val popup = ListPopupWindow(this)
+        popup.anchorView = binding.overlayView
+        popup.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_list_item_1, displayItems)
+        )
+
+        // 팝업 너비: 항목이 잘리지 않도록 200dp 고정
+        popup.width = (200 * resources.displayMetrics.density).toInt()
+
+        // 팝업 위치: 터치 지점 기준
+        // horizontalOffset — anchorView 좌측 끝에서의 수평 오프셋
+        // verticalOffset   — anchorView 하단 끝에서의 수직 오프셋 (음수 = 위 방향)
+        // → touchY - overlayView.height 로 설정하면 팝업 상단이 터치 Y에 정렬된다
+        popup.horizontalOffset = touchX.toInt()
+        popup.verticalOffset   = touchY.toInt() - binding.overlayView.height
+
+        // 팝업 외부 터치 시 자동 닫힘
+        popup.isModal = true
+
+        popup.setOnItemClickListener { _, _, position, _ ->
+            val selected = candidates[position]
+            selectSubject(selected.index, selected.box, selected.label)
+            popup.dismiss()
+        }
+
+        popup.show()
     }
 
     // ── 가이드 관리 ─────────────────────────────────────────────────────────────
