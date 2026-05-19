@@ -62,4 +62,10 @@ dependencies {
     // PyTorch Android — 풍경 모드 구도 분류 모델 (.pt TorchScript 포맷)
     implementation("org.pytorch:pytorch_android:2.1.0")
     implementation("org.pytorch:pytorch_android_torchvision:2.1.0")
+
+    // OkHttp — 촬영 후 미학 점수 API 호출
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // RecyclerView — 앱 전용 갤러리 그리드
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 }

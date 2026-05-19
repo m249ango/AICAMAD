@@ -9,4 +9,20 @@
     <string name="hint_move_subject">피사체를 가이드 박스로 이동하세요</string>
     <string name="hint_hold_subject">유지하세요…</string>
     <string name="hint_shoot_now">지금 촬영하세요!</string>
+
+    <!-- 리뷰 화면 -->
+    <string name="label_aesthetic_score">미학 점수</string>
+    <string name="score_analyzing">분석 중…</string>
+    <string name="btn_save">저장</string>
+    <string name="btn_discard">버리기</string>
+    <string name="desc_preview_image">촬영된 이미지 미리보기</string>
+
+    <!-- 갤러리 화면 -->
+    <string name="title_gallery">갤러리</string>
+    <string name="gallery_empty">저장된 사진이 없습니다.</string>
+    <string name="desc_gallery_thumbnail">갤러리 썸네일</string>
+    <string name="desc_back">뒤로가기</string>
+
+    <!-- 메인 화면 갤러리 버튼 -->
+    <string name="desc_open_gallery">갤러리 열기</string>
 </resources>

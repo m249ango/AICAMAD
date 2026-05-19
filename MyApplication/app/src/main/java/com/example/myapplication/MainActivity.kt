@@ -31,9 +31,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import android.content.ContentValues
-import android.os.Build
-import android.provider.MediaStore
+import android.content.Intent
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
@@ -126,6 +125,7 @@ class MainActivity : AppCompatActivity() {
         setupCompositionButton()
         setupUnfocusButton()
         setupOverlayTouchCallback()
+        setupGalleryButton()
 
         if (allPermissionsGranted()) {
             startCamera()
@@ -182,6 +182,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupUnfocusButton() {
         binding.btnUnfocus.setOnClickListener {
             unfocusSubject()
+        }
+    }
+
+    /** 갤러리 열기 버튼 클릭 → GalleryActivity 실행 */
+    private fun setupGalleryButton() {
+        binding.btnOpenGallery.setOnClickListener {
+            startActivity(Intent(this, GalleryActivity::class.java))
         }
     }
 
@@ -484,19 +491,11 @@ class MainActivity : AppCompatActivity() {
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
 
-        val name = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
-            .format(System.currentTimeMillis())
-
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MyApplication")
-            }
-        }
+        // 임시 파일에 저장 → ReviewActivity 에서 API 분석 후 저장 여부 결정
+        val tempFile = File(cacheDir, "temp_capture_${System.currentTimeMillis()}.jpg")
 
         val outputOptions = ImageCapture.OutputFileOptions
-            .Builder(contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            .Builder(tempFile)
             .build()
 
         imageCapture.takePicture(
@@ -504,12 +503,15 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    val msg = "사진 저장 성공: ${output.savedUri}"
-                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
-                    Log.d("CameraApp", msg)
+                    Log.d("CameraApp", "임시 캡처 저장: ${tempFile.absolutePath}")
+                    val intent = Intent(this@MainActivity, ReviewActivity::class.java).apply {
+                        putExtra(ReviewActivity.EXTRA_TEMP_FILE_PATH, tempFile.absolutePath)
+                    }
+                    startActivity(intent)
                 }
                 override fun onError(exc: ImageCaptureException) {
-                    Log.e("CameraApp", "사진 저장 실패: ${exc.message}", exc)
+                    Log.e("CameraApp", "사진 캡처 실패: ${exc.message}", exc)
+                    Toast.makeText(baseContext, "촬영 실패", Toast.LENGTH_SHORT).show()
                 }
             }
         )

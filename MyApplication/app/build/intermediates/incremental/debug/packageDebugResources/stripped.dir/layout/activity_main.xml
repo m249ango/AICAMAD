@@ -118,6 +118,22 @@
         app:layout_constraintStart_toStartOf="@id/viewFinder"
         app:layout_constraintEnd_toEndOf="@id/viewFinder" />
 
+    <!-- 갤러리 열기 버튼 — viewFinder 좌하단 -->
+    <ImageButton
+        android:id="@+id/btnOpenGallery"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="20dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_gallery"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/desc_open_gallery"
+        android:elevation="15dp"
+        app:tint="@android:color/white"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
     <!--
         구도 선택 버튼 + 포커스 해제 버튼
         — viewFinder 상단 좌측에 오버레이 (하단 내비게이션 바와 겹치지 않음)

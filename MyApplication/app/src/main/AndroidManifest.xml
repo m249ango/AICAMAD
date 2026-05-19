@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera" />
 
     <!-- 사진 저장 -->
@@ -26,6 +27,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 촬영 후 리뷰 화면 -->
+        <activity
+            android:name=".ReviewActivity"
+            android:exported="false" />
+
+        <!-- 앱 전용 갤러리 화면 -->
+        <activity
+            android:name=".GalleryActivity"
+            android:exported="false" />
     </application>
 
 </manifest>
