@@ -6,7 +6,10 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 촬영 이미지 미리보기 -->
+    <!--
+        촬영 이미지 미리보기.
+        상단(부모 상단 ~ status bar 포함)에서 scrollContent 바로 위까지 남은 공간을 채운다.
+    -->
     <ImageView
         android:id="@+id/ivPreview"
         android:layout_width="0dp"
@@ -16,97 +19,188 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/scoreCard" />
+        app:layout_constraintBottom_toTopOf="@id/scrollContent" />
 
-    <!-- 점수 카드 -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/scoreCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="12dp"
-        app:cardBackgroundColor="#1E1E1E"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="4dp"
-        app:layout_constraintBottom_toTopOf="@id/btnRow"
+    <!--
+        메타데이터 카드 + 버튼 행을 담는 스크롤 영역.
+
+        - layout_height="0dp" + constraintHeight_percent 로 화면 하단 45%를 점유한다.
+        - 콘텐츠가 넘칠 경우 스크롤로 접근 가능하다.
+        - ReviewActivity 에서 WindowInsetsCompat 으로 내비게이션 바 높이만큼
+          paddingBottom 을 동적으로 추가한다 (edge-to-edge 보정).
+    -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintHeight_percent="0.45"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp">
+            android:orientation="vertical">
 
-            <!-- "미학 점수" 레이블 -->
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- 메타데이터 카드 (미학 점수 · 카테고리 · 촬영 모드) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/scoreCard"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/label_aesthetic_score"
-                android:textColor="#AAAAAA"
-                android:textSize="13sp" />
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="#1E1E1E"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp">
 
-            <!-- 점수 값 또는 "분석 중..." -->
-            <TextView
-                android:id="@+id/tvScore"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/score_analyzing"
-                android:textColor="#FFFFFF"
-                android:textSize="40sp"
-                android:textStyle="bold"
-                android:fontFamily="monospace" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="16dp">
 
-            <!-- 분석 중 진행 표시기 -->
-            <ProgressBar
-                android:id="@+id/progressBar"
-                android:layout_width="wrap_content"
+                    <!-- ① 미학 점수 ──────────────────────────────── -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_aesthetic_score"
+                        android:textColor="#AAAAAA"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tvScore"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/score_analyzing"
+                        android:textColor="#FFFFFF"
+                        android:textSize="40sp"
+                        android:textStyle="bold"
+                        android:fontFamily="monospace" />
+
+                    <ProgressBar
+                        android:id="@+id/progressBar"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:visibility="visible"
+                        android:indeterminateTint="#FFFFFF" />
+
+                    <!-- 구분선 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="14dp"
+                        android:layout_marginBottom="14dp"
+                        android:layout_marginStart="24dp"
+                        android:layout_marginEnd="24dp"
+                        android:background="#333333" />
+
+                    <!-- ② 카테고리 ──────────────────────────────── -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_category"
+                        android:textColor="#AAAAAA"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="4dp">
+
+                        <TextView
+                            android:id="@+id/tvCategory"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/score_analyzing"
+                            android:textColor="#FFFFFF"
+                            android:textSize="22sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvCategoryScore"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:text=""
+                            android:textColor="#AAAAAA"
+                            android:textSize="18sp"
+                            android:fontFamily="monospace" />
+                    </LinearLayout>
+
+                    <!-- 구분선 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="14dp"
+                        android:layout_marginBottom="14dp"
+                        android:layout_marginStart="24dp"
+                        android:layout_marginEnd="24dp"
+                        android:background="#333333" />
+
+                    <!-- ③ 촬영 모드 ──────────────────────────────── -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_mode"
+                        android:textColor="#AAAAAA"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tvMode"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="—"
+                        android:textColor="#FFFFFF"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 저장 / 버리기 버튼 행 -->
+            <LinearLayout
+                android:id="@+id/btnRow"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:visibility="visible"
-                android:indeterminateTint="#FFFFFF" />
+                android:orientation="horizontal"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp">
+
+                <Button
+                    android:id="@+id/btnDiscard"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/btn_discard"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="#FF555555" />
+
+                <Button
+                    android:id="@+id/btnSave"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/btn_save"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="#FFE94560"
+                    android:enabled="false" />
+            </LinearLayout>
+
         </LinearLayout>
-    </androidx.cardview.widget.CardView>
-
-    <!-- 저장 / 버리기 버튼 행 -->
-    <LinearLayout
-        android:id="@+id/btnRow"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="24dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <!-- 버리기 버튼 -->
-        <Button
-            android:id="@+id/btnDiscard"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:text="@string/btn_discard"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#FF555555" />
-
-        <!-- 저장 버튼 (API 응답 전에는 비활성) -->
-        <Button
-            android:id="@+id/btnSave"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:text="@string/btn_save"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#FFE94560"
-            android:enabled="false" />
-    </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

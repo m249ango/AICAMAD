@@ -12,6 +12,8 @@
 
     <!-- 리뷰 화면 -->
     <string name="label_aesthetic_score">미학 점수</string>
+    <string name="label_category">카테고리</string>
+    <string name="label_mode">촬영 모드</string>
     <string name="score_analyzing">분석 중…</string>
     <string name="btn_save">저장</string>
     <string name="btn_discard">버리기</string>

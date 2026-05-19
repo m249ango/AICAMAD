@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.GridLayoutManager
 import com.example.myapplication.databinding.ActivityGalleryBinding
 
@@ -28,6 +31,16 @@ class GalleryActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.btnBack.setOnClickListener { finish() }
+
+        // edge-to-edge 보정: Material3 테마가 자동으로 edge-to-edge 를 활성화한다.
+        // RecyclerView 에 내비게이션 바 높이만큼 하단 패딩을 추가하여 마지막 항목이 가려지지 않게 한다.
+        // clipToPadding=false 로 스크롤 중에도 패딩 영역이 투명하게 유지된다.
+        binding.rvGallery.clipToPadding = false
+        ViewCompat.setOnApplyWindowInsetsListener(binding.rvGallery) { view, insets ->
+            val navBar = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            view.updatePadding(bottom = navBar.bottom)
+            insets
+        }
 
         loadGallery()
     }
@@ -52,7 +65,7 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     /**
-     * 선택한 사진의 원본 이미지와 미학 점수를 AlertDialog로 표시한다.
+     * 선택한 사진의 원본 이미지와 4가지 메타데이터를 AlertDialog로 표시한다.
      * EXIF 회전 정보를 적용하여 올바른 방향으로 표시한다.
      *
      * @param item 선택된 [GalleryItem]
@@ -61,15 +74,39 @@ class GalleryActivity : AppCompatActivity() {
         val raw    = BitmapFactory.decodeFile(item.file.absolutePath)
         val bitmap = raw?.let { applyExifRotation(it, item) } ?: raw
 
+        // 이미지 + 메타데이터를 수직으로 배치하는 레이아웃
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+
+        // 이미지
         val imageView = android.widget.ImageView(this).apply {
             setImageBitmap(bitmap)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
         }
+        container.addView(imageView)
+
+        // 메타데이터 텍스트 (미학 점수 · 카테고리 · 촬영 모드)
+        val dp = resources.displayMetrics.density
+        val metaText = android.widget.TextView(this).apply {
+            text = buildString {
+                append("미학 점수    ${item.score}점\n")
+                append("카테고리     ${item.category} : ${item.categoryScore}점\n")
+                append("촬영 모드    ${item.mode}")
+            }
+            textSize  = 14f
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
+            setPadding(
+                (16 * dp).toInt(), (12 * dp).toInt(),
+                (16 * dp).toInt(), (12 * dp).toInt()
+            )
+        }
+        container.addView(metaText)
 
         AlertDialog.Builder(this)
-            .setTitle("${item.score}점")
-            .setView(imageView)
+            .setView(container)
             .setPositiveButton("닫기", null)
             .show()
     }

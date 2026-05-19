@@ -506,6 +506,11 @@ class MainActivity : AppCompatActivity() {
                     Log.d("CameraApp", "임시 캡처 저장: ${tempFile.absolutePath}")
                     val intent = Intent(this@MainActivity, ReviewActivity::class.java).apply {
                         putExtra(ReviewActivity.EXTRA_TEMP_FILE_PATH, tempFile.absolutePath)
+                        // 현재 활성 모드를 메타데이터로 전달
+                        putExtra(
+                            ReviewActivity.EXTRA_MODE,
+                            if (isObjectDetectionEnabled) "사물" else "풍경"
+                        )
                     }
                     startActivity(intent)
                 }

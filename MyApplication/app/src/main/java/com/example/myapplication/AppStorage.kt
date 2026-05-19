@@ -15,7 +15,18 @@ import java.util.Locale
  * ```
  * (외부 앱 전용 디렉터리)/Pictures/AICAMAD_gallery/
  *   AICAMAD_20240101_120000.jpg   ← 원본 JPEG
- *   AICAMAD_20240101_120000.json  ← 메타데이터 (score, timestamp)
+ *   AICAMAD_20240101_120000.json  ← 메타데이터 (4가지)
+ * ```
+ *
+ * ## JSON 메타데이터 스키마
+ * ```json
+ * {
+ *   "score":          74,          // 미학 점수 0~100
+ *   "category":       "삼등분 법칙", // 구도 카테고리
+ *   "category_score": 87,          // 카테고리 확신도 0~100
+ *   "mode":           "사물",       // 촬영 모드 ("사물" or "풍경")
+ *   "timestamp":      "20240101_120000"
+ * }
  * ```
  *
  * 외부 앱 전용 저장소([Context.getExternalFilesDir])를 사용하므로
@@ -27,6 +38,13 @@ object AppStorage {
     private const val GALLERY_DIR_NAME = "AICAMAD_gallery"
     private const val FILE_PREFIX      = "AICAMAD_"
     private const val TIMESTAMP_FORMAT = "yyyyMMdd_HHmmss"
+
+    // JSON 필드명 상수
+    private const val KEY_SCORE          = "score"
+    private const val KEY_CATEGORY       = "category"
+    private const val KEY_CATEGORY_SCORE = "category_score"
+    private const val KEY_MODE           = "mode"
+    private const val KEY_TIMESTAMP      = "timestamp"
 
     // ── 공개 API ────────────────────────────────────────────────────────────────
 
@@ -44,12 +62,22 @@ object AppStorage {
     /**
      * 임시 캡처 파일을 갤러리에 저장하고 메타데이터(JSON)를 함께 기록한다.
      *
-     * @param context  Context
-     * @param tempFile [MainActivity.takePhoto]가 생성한 임시 JPEG 파일
-     * @param score    미학 점수 0~100
+     * @param context       Context
+     * @param tempFile      [MainActivity.takePhoto]가 생성한 임시 JPEG 파일
+     * @param score         미학 점수 0~100
+     * @param category      구도 카테고리 이름 (예: "삼등분 법칙")
+     * @param categoryScore 카테고리 확신도 0~100
+     * @param mode          촬영 모드 ("사물" or "풍경")
      * @return 저장된 JPEG 파일. 저장 실패 시 null.
      */
-    fun savePhoto(context: Context, tempFile: File, score: Int): File? {
+    fun savePhoto(
+        context:       Context,
+        tempFile:      File,
+        score:         Int,
+        category:      String,
+        categoryScore: Int,
+        mode:          String
+    ): File? {
         return try {
             val timestamp = SimpleDateFormat(TIMESTAMP_FORMAT, Locale.US).format(Date())
             val dir       = getGalleryDir(context)
@@ -59,10 +87,13 @@ object AppStorage {
             // 임시 파일 → 갤러리 복사
             tempFile.copyTo(photoFile, overwrite = true)
 
-            // 메타데이터 저장
+            // 메타데이터 저장 (4가지 항목)
             val meta = JSONObject().apply {
-                put("score",     score)
-                put("timestamp", timestamp)
+                put(KEY_SCORE,          score)
+                put(KEY_CATEGORY,       category)
+                put(KEY_CATEGORY_SCORE, categoryScore)
+                put(KEY_MODE,           mode)
+                put(KEY_TIMESTAMP,      timestamp)
             }
             metaFile.writeText(meta.toString())
 
@@ -75,8 +106,8 @@ object AppStorage {
     /**
      * 갤러리 디렉터리의 모든 항목을 최신순으로 반환한다.
      *
-     * JPEG 파일과 동일한 이름의 JSON 메타데이터 파일에서 점수를 읽는다.
-     * 메타데이터 파일이 없으면 점수를 0으로 처리한다.
+     * JPEG 파일과 동일한 이름의 JSON 메타데이터 파일에서 모든 필드를 읽는다.
+     * 이전 버전에서 저장된 파일처럼 일부 필드가 없으면 기본값("—", 0)으로 처리한다.
      */
     fun getGalleryItems(context: Context): List<GalleryItem> {
         val dir = getGalleryDir(context)
@@ -84,9 +115,16 @@ object AppStorage {
             ?.sortedByDescending { it.lastModified() }
             ?.map { photoFile ->
                 val metaFile  = File(dir, photoFile.nameWithoutExtension + ".json")
-                val score     = readScoreFromMeta(metaFile)
+                val meta      = readMeta(metaFile)
                 val timestamp = photoFile.nameWithoutExtension.removePrefix(FILE_PREFIX)
-                GalleryItem(file = photoFile, score = score, timestamp = timestamp)
+                GalleryItem(
+                    file          = photoFile,
+                    score         = meta.score,
+                    category      = meta.category,
+                    categoryScore = meta.categoryScore,
+                    mode          = meta.mode,
+                    timestamp     = timestamp
+                )
             }
             ?: emptyList()
     }
@@ -104,13 +142,29 @@ object AppStorage {
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
-    /** JSON 메타데이터 파일에서 score 필드를 읽는다. 실패 시 0 반환. */
-    private fun readScoreFromMeta(metaFile: File): Int {
+    /** JSON 파일에서 읽은 메타데이터를 담는 내부 데이터 클래스 */
+    private data class Meta(
+        val score:         Int    = 0,
+        val category:      String = "—",
+        val categoryScore: Int    = 0,
+        val mode:          String = "—"
+    )
+
+    /**
+     * JSON 메타데이터 파일을 파싱한다.
+     * 파일이 없거나 특정 필드가 없는 경우 기본값으로 처리한다 (하위 호환성 보장).
+     */
+    private fun readMeta(metaFile: File): Meta {
         return try {
             val json = JSONObject(metaFile.readText())
-            json.getInt("score")
+            Meta(
+                score         = json.optInt(KEY_SCORE, 0),
+                category      = json.optString(KEY_CATEGORY, "—"),
+                categoryScore = json.optInt(KEY_CATEGORY_SCORE, 0),
+                mode          = json.optString(KEY_MODE, "—")
+            )
         } catch (e: Exception) {
-            0
+            Meta()  // 파일 없거나 파싱 실패 → 전부 기본값
         }
     }
 }
