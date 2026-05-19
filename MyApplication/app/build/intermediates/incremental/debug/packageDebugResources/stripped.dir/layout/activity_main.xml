@@ -118,13 +118,16 @@
         app:layout_constraintStart_toStartOf="@id/viewFinder"
         app:layout_constraintEnd_toEndOf="@id/viewFinder" />
 
-    <!-- 갤러리 열기 버튼 — viewFinder 좌하단 -->
+    <!--
+        갤러리 열기 버튼.
+        viewFinder 아래 공간의 좌측에 배치하여 Android 네비게이션 바와 겹치지 않는다.
+        셔터 버튼과 같은 행에 위치하도록 viewFinder 하단~화면 하단 사이를 수직 중앙 정렬한다.
+    -->
     <ImageButton
         android:id="@+id/btnOpenGallery"
         android:layout_width="52dp"
         android:layout_height="52dp"
-        android:layout_marginStart="20dp"
-        android:layout_marginBottom="20dp"
+        android:layout_marginStart="36dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_gallery"
         android:scaleType="fitCenter"
@@ -132,6 +135,7 @@
         android:elevation="15dp"
         app:tint="@android:color/white"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/viewFinder"
         app:layout_constraintBottom_toBottomOf="parent" />
 
     <!--

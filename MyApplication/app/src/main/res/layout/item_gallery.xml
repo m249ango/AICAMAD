@@ -1,25 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout
+<androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:padding="3dp">
 
-    <!-- 썸네일 이미지 (1:1 비율) -->
+    <!--
+        썸네일 이미지.
+        layout_width="0dp" + layout_height="0dp" + dimensionRatio="H,1:1" 조합으로
+        ConstraintLayout 이 너비에 맞춰 높이를 1:1 로 결정한다.
+    -->
     <ImageView
         android:id="@+id/ivThumbnail"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="0dp"
         android:scaleType="centerCrop"
         android:contentDescription="@string/desc_gallery_thumbnail"
-        android:adjustViewBounds="true" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="H,1:1" />
 
     <!-- 점수 오버레이 (우하단) -->
     <TextView
         android:id="@+id/tvItemScore"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
         android:layout_margin="6dp"
         android:paddingStart="8dp"
         android:paddingEnd="8dp"
@@ -29,6 +37,8 @@
         android:textColor="#FFFFFF"
         android:textSize="13sp"
         android:textStyle="bold"
-        android:fontFamily="monospace" />
+        android:fontFamily="monospace"
+        app:layout_constraintBottom_toBottomOf="@id/ivThumbnail"
+        app:layout_constraintEnd_toEndOf="@id/ivThumbnail" />
 
-</FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

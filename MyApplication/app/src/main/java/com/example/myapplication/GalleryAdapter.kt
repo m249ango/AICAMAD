@@ -1,7 +1,10 @@
 package com.example.myapplication
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -63,18 +66,40 @@ class GalleryAdapter(
     /**
      * 파일에서 [targetSize] 픽셀 이하로 샘플링하여 비트맵을 디코딩한다.
      * 전체 해상도 원본을 한꺼번에 메모리에 올리지 않아 OOM을 방지한다.
+     * EXIF 회전 정보를 적용하여 항상 올바른 방향으로 반환한다.
      */
-    private fun decodeSampledBitmap(item: GalleryItem, targetSize: Int): android.graphics.Bitmap? {
+    private fun decodeSampledBitmap(item: GalleryItem, targetSize: Int): Bitmap? {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(item.file.absolutePath, opts)
 
         var sampleSize = 1
         while (opts.outWidth / sampleSize > targetSize) sampleSize *= 2
 
-        return BitmapFactory.decodeFile(
+        val raw = BitmapFactory.decodeFile(
             item.file.absolutePath,
             BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        )
+        ) ?: return null
+
+        return applyExifRotation(raw, item.file)
+    }
+
+    /**
+     * EXIF 회전 정보를 읽어 비트맵을 올바른 방향으로 회전한다.
+     * CameraX JPEG는 픽셀을 회전하지 않고 EXIF 에만 방향을 기록하므로 표시 전 보정이 필요하다.
+     */
+    private fun applyExifRotation(bitmap: Bitmap, file: java.io.File): Bitmap {
+        val degrees = when (
+            ExifInterface(file.absolutePath)
+                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        ) {
+            ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> return bitmap
+        }
+        val matrix = Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            .also { if (it !== bitmap) bitmap.recycle() }
     }
 
     /** 점수 구간별 색상 */

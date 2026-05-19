@@ -1,6 +1,9 @@
 package com.example.myapplication
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AlertDialog
@@ -50,11 +53,13 @@ class GalleryActivity : AppCompatActivity() {
 
     /**
      * 선택한 사진의 원본 이미지와 미학 점수를 AlertDialog로 표시한다.
+     * EXIF 회전 정보를 적용하여 올바른 방향으로 표시한다.
      *
      * @param item 선택된 [GalleryItem]
      */
     private fun showDetailDialog(item: GalleryItem) {
-        val bitmap = BitmapFactory.decodeFile(item.file.absolutePath)
+        val raw    = BitmapFactory.decodeFile(item.file.absolutePath)
+        val bitmap = raw?.let { applyExifRotation(it, item) } ?: raw
 
         val imageView = android.widget.ImageView(this).apply {
             setImageBitmap(bitmap)
@@ -67,5 +72,24 @@ class GalleryActivity : AppCompatActivity() {
             .setView(imageView)
             .setPositiveButton("닫기", null)
             .show()
+    }
+
+    /**
+     * EXIF 회전 정보를 읽어 비트맵을 올바른 방향으로 회전한다.
+     * CameraX JPEG는 픽셀을 회전하지 않고 EXIF 에만 방향을 기록하므로 표시 전 보정이 필요하다.
+     */
+    private fun applyExifRotation(bitmap: Bitmap, item: GalleryItem): Bitmap {
+        val degrees = when (
+            ExifInterface(item.file.absolutePath)
+                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        ) {
+            ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> return bitmap
+        }
+        val matrix = Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            .also { if (it !== bitmap) bitmap.recycle() }
     }
 }

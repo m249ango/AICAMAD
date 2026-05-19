@@ -1,7 +1,10 @@
 package com.example.myapplication
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -60,7 +63,7 @@ class ReviewActivity : AppCompatActivity() {
 
     /**
      * 임시 파일에서 비트맵을 디코딩하여 미리보기 ImageView에 설정한다.
-     * 메모리 절약을 위해 화면 크기에 맞게 샘플링한다.
+     * 메모리 절약을 위해 화면 크기에 맞게 샘플링하고, EXIF 회전 정보를 적용한다.
      */
     private fun setupImagePreview(file: File) {
         // 1단계: 원본 크기 측정
@@ -72,10 +75,35 @@ class ReviewActivity : AppCompatActivity() {
         var sampleSize = 1
         while (options.outWidth / sampleSize > displayWidth) sampleSize *= 2
 
-        // 3단계: 샘플링하여 디코딩
+        // 3단계: 샘플링하여 디코딩 후 EXIF 방향 보정
         val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
-        binding.ivPreview.setImageBitmap(bitmap)
+        val raw = BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+        binding.ivPreview.setImageBitmap(raw?.let { applyExifRotation(it, file) } ?: raw)
+    }
+
+    /**
+     * EXIF 회전 정보를 읽어 비트맵을 올바른 방향으로 회전한다.
+     *
+     * CameraX는 픽셀을 회전하지 않고 EXIF 메타데이터에만 회전 방향을 기록하므로,
+     * 표시 전 반드시 이 함수로 보정해야 세로 이미지가 바르게 나타난다.
+     *
+     * @param bitmap 원본 디코딩된 비트맵
+     * @param file   EXIF 정보를 읽을 JPEG 파일
+     * @return 회전이 적용된 비트맵 (회전 불필요 시 원본 반환)
+     */
+    private fun applyExifRotation(bitmap: Bitmap, file: File): Bitmap {
+        val degrees = when (
+            ExifInterface(file.absolutePath)
+                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        ) {
+            ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> return bitmap   // 회전 불필요
+        }
+        val matrix = Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            .also { if (it !== bitmap) bitmap.recycle() }
     }
 
     // ── 미학 점수 분석 ────────────────────────────────────────────────────────
