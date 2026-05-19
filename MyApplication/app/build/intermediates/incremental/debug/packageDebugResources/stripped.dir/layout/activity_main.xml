@@ -50,6 +50,51 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:scaleType="fitCenter" />
 
+    <!--
+        풍경 모드 구도 추론 결과 — viewFinder 우상단에 오버레이
+        구도 이름 + 0~100 점수를 표시한다.
+        풍경 모드에서만 VISIBLE, 그 외엔 GONE.
+    -->
+    <LinearLayout
+        android:id="@+id/landscapeScoreLayout"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/score_background"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/viewFinder"
+        app:layout_constraintTop_toTopOf="@id/viewFinder">
+
+        <!-- 현재 구도 이름 -->
+        <TextView
+            android:id="@+id/tvCompositionName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false" />
+
+        <!-- 0~100 점수 -->
+        <TextView
+            android:id="@+id/tvLandscapeScore"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:includeFontPadding="false" />
+    </LinearLayout>
+
     <!-- 바운딩 박스 오버레이 — viewFinder 와 동일 영역 -->
     <com.example.myapplication.OverlayView
         android:id="@+id/overlayView"

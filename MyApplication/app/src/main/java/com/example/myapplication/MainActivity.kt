@@ -32,6 +32,7 @@ import java.util.concurrent.Executors
 import android.content.ContentValues
 import android.os.Build
 import android.provider.MediaStore
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
 
@@ -42,6 +43,20 @@ class MainActivity : AppCompatActivity() {
 
     // 사진 촬영을 위한 변수
     private var imageCapture: ImageCapture? = null
+
+    // ── 풍경 모드 필드 ────────────────────────────────────────────────────────
+
+    /**
+     * 풍경 구도 분류기. 풍경 모드 첫 진입 시 백그라운드에서 초기화된다.
+     * 모델 파일(~수십 MB)을 내부 저장소로 복사하는 시간이 필요하므로 지연 로딩한다.
+     */
+    private var landscapeClassifier: LandscapeClassifier? = null
+
+    /**
+     * 풍경 모드 추론 중복 실행 방지 플래그.
+     * 추론 완료 전에 다음 프레임이 도착해도 새 추론을 시작하지 않는다.
+     */
+    private val isInferenceRunning = AtomicBoolean(false)
 
     // ── 구도 모드 상태 필드 ─────────────────────────────────────────────────────
 
@@ -335,26 +350,39 @@ class MainActivity : AppCompatActivity() {
     // ── 기존 UI 설정 ────────────────────────────────────────────────────────────
 
     private fun setupTopModeButtons() {
-        // 사물 모드: 개체 인식
-        binding.btnObjectMode.setOnClickListener {
-            isObjectDetectionEnabled = true
-            binding.btnObjectMode.alpha = 1.0f
-            binding.btnLandscapeMode.alpha = 0.5f
-            binding.overlayView.visibility = View.VISIBLE
-            Toast.makeText(this, "사물 인식 모드", Toast.LENGTH_SHORT).show()
-        }
-
-        // 풍경 모드: 미구현. 전환 시 구도 모드도 함께 해제한다.
+        // 풍경 모드: 구도 분류 AI 추론 + 우상단 결과 표시
         binding.btnLandscapeMode.setOnClickListener {
             isObjectDetectionEnabled = false
             binding.btnObjectMode.alpha = 0.5f
             binding.btnLandscapeMode.alpha = 1.0f
             binding.overlayView.visibility = View.GONE
 
-            // 풍경 모드 전환 시 피사체 포커스 및 구도 가이드 초기화
+            // 사물 모드 관련 상태 초기화
             unfocusSubject()
 
+            // 풍경 점수 패널 표시 및 초기화
+            binding.landscapeScoreLayout.visibility = View.VISIBLE
+            binding.tvCompositionName.text = "분석 중…"
+            binding.tvLandscapeScore.text  = "—"
+
+            // 분류기 지연 초기화 (최초 1회만 모델 로드)
+            if (landscapeClassifier == null) {
+                cameraExecutor.execute {
+                    landscapeClassifier = LandscapeClassifier(this)
+                }
+            }
+
             Toast.makeText(this, "풍경 촬영 모드", Toast.LENGTH_SHORT).show()
+        }
+
+        // 사물 모드: 풍경 패널 숨김
+        binding.btnObjectMode.setOnClickListener {
+            isObjectDetectionEnabled = true
+            binding.btnObjectMode.alpha = 1.0f
+            binding.btnLandscapeMode.alpha = 0.5f
+            binding.overlayView.visibility = View.VISIBLE
+            binding.landscapeScoreLayout.visibility = View.GONE
+            Toast.makeText(this, "사물 인식 모드", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -438,7 +466,8 @@ class MainActivity : AppCompatActivity() {
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                if (isObjectDetectionEnabled) detectObjects(imageProxy) else imageProxy.close()
+                // 사물 모드와 풍경 모드 모두 detectObjects에서 분기 처리
+                detectObjects(imageProxy)
             }
             try {
                 cameraProvider.unbindAll()
@@ -528,18 +557,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun detectObjects(imageProxy: ImageProxy) {
-        if (objectDetector == null) { imageProxy.close(); return }
-
         val bitmap = imageProxy.toBitmap()
         val matrix = Matrix().apply { postRotate(imageProxy.imageInfo.rotationDegrees.toFloat()) }
         val rotatedBitmap =
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-
-        objectDetector?.detectAsync(
-            BitmapImageBuilder(rotatedBitmap).build(),
-            System.currentTimeMillis()
-        )
         imageProxy.close()
+
+        if (isObjectDetectionEnabled) {
+            // ── 사물 모드: MediaPipe 객체 감지 ──────────────────────────────
+            if (objectDetector == null) return
+            objectDetector?.detectAsync(
+                BitmapImageBuilder(rotatedBitmap).build(),
+                System.currentTimeMillis()
+            )
+        } else {
+            // ── 풍경 모드: PyTorch Mobile 구도 분류 ─────────────────────────
+            // 분류기가 아직 초기화되지 않았거나 이전 추론이 진행 중이면 프레임을 건너뜀
+            val classifier = landscapeClassifier ?: return
+            if (!isInferenceRunning.compareAndSet(false, true)) return
+
+            val result = classifier.classify(rotatedBitmap)
+            isInferenceRunning.set(false)
+
+            result?.let { updateLandscapeScore(it) }
+        }
+    }
+
+    /**
+     * 풍경 모드 추론 결과를 UI에 반영한다. UI 스레드에서 실행된다.
+     *
+     * 점수에 따라 텍스트 색상을 변경한다:
+     * - 0~59점: 빨강 (#FF5252)
+     * - 60~79점: 노랑 (#FFD740)
+     * - 80~100점: 초록 (#69F0AE)
+     */
+    private fun updateLandscapeScore(result: LandscapeResult) {
+        runOnUiThread {
+            binding.tvCompositionName.text = result.label
+            binding.tvLandscapeScore.text  = "${result.score}점"
+
+            val color = when {
+                result.score < 60 -> Color.parseColor("#FF5252")
+                result.score < 80 -> Color.parseColor("#FFD740")
+                else              -> Color.parseColor("#69F0AE")
+            }
+            binding.tvCompositionName.setTextColor(color)
+            binding.tvLandscapeScore.setTextColor(color)
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -551,6 +615,7 @@ class MainActivity : AppCompatActivity() {
         matchHandler.removeCallbacksAndMessages(null)
         cameraExecutor.shutdown()
         objectDetector?.close()
+        landscapeClassifier?.close()
     }
 
     companion object {
