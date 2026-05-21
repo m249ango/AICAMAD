@@ -374,16 +374,38 @@ class MainActivity : AppCompatActivity() {
     /**
      * 피사체 중심 좌표를 받아 [guideBox]와의 매칭 상태를 판단하고 UI를 갱신한다.
      *
-     * - 중심이 [guideBox] 안 → MATCHED 상태 + 2초 타이머 시작
-     * - 중심이 [guideBox] 밖 → IDLE 복귀 + 타이머 취소 (RECOMMEND 이후엔 유지)
+     * ## 매칭 조건
+     * 피사체 중심과 가이드 중심(구도 교차점) 사이의 거리가 허용 반경 이내여야 MATCHED.
+     *
+     * 허용 반경은 **가이드 박스 절반 크기와 [MATCH_MAX_HALF_X]/[MATCH_MAX_HALF_Y] 중 작은 값**이다.
+     * 이 상한 덕분에 피사체가 아무리 커도 허용 범위가 무한히 커지지 않는다.
+     *
+     * ```
+     * 소형 피사체 (100 px): 허용 반경 = min(50, 72) = ±50 px  (피사체 크기 기준)
+     * 대형 피사체 (400 px): 허용 반경 = min(200, 72) = ±72 px  (상한 적용)
+     * ```
+     *
+     * 결과적으로 대형 피사체가 가이드 박스 가장자리에만 걸쳐도 매치되던 문제가 해소된다.
+     *
+     * - 허용 반경 이내 → MATCHED 상태 + 2초 타이머 시작
+     * - 허용 반경 이탈 → IDLE 복귀 + 타이머 취소 (RECOMMEND 이후엔 유지)
      *
      * @param subjectCenter 현재 프레임의 피사체 중심 (480×640 이미지 좌표계)
      */
     private fun checkMatchState(subjectCenter: PointF) {
         val guide = guideBox ?: return
 
-        if (guide.contains(subjectCenter.x, subjectCenter.y)) {
-            // 피사체 중심이 가이드 박스 안에 있음
+        // 허용 반경: 가이드 박스 절반이되 MATCH_MAX_HALF_X/Y 를 초과하지 않는다.
+        val allowHalfX = minOf(guide.width()  / 2f, MATCH_MAX_HALF_X)
+        val allowHalfY = minOf(guide.height() / 2f, MATCH_MAX_HALF_Y)
+
+        val dx = subjectCenter.x - guide.centerX()
+        val dy = subjectCenter.y - guide.centerY()
+        val inMatchZone = dx >= -allowHalfX && dx <= allowHalfX &&
+                          dy >= -allowHalfY && dy <= allowHalfY
+
+        if (inMatchZone) {
+            // 피사체 중심이 허용 반경 이내 → MATCHED
             if (!isMatched) {
                 isMatched = true
 
@@ -401,7 +423,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else {
-            // 피사체 중심이 가이드 박스 밖으로 이탈
+            // 허용 반경 이탈
             if (isMatched) {
                 isMatched = false
                 if (!isRecommended) {
@@ -605,7 +627,7 @@ class MainActivity : AppCompatActivity() {
         // ── 추적 모드 ──────────────────────────────────────────────────────────
         val trackedBox = findTrackedBox(result)
         if (trackedBox != null) {
-            // 매 프레임: 피사체 중심 위치 갱신 (매칭 정확도 유지)
+            // 매 프레임: 피사체 중심 위치 갱신 (findTrackedBox의 근접 피사체 탐색에 사용)
             val center = PointF(trackedBox.centerX(), trackedBox.centerY())
             lastKnownCenter = center
 
@@ -701,6 +723,44 @@ class MainActivity : AppCompatActivity() {
 
         /** 피사체가 가이드 박스 안에 유지되어야 하는 최소 시간 (밀리초) */
         private const val MATCH_HOLD_MS = 2000L
+
+        /**
+         * 매칭 판정 허용 반경의 상한 비율 (이미지 크기 대비).
+         *
+         * ## 설정 근거
+         * 가이드 박스는 피사체 박스와 같은 크기로 계산된다.
+         * 따라서 피사체가 클수록 가이드 박스도 커지고 허용 범위도 같은 비율로 늘어난다.
+         * 이 비율로 상한을 두면 피사체 크기와 무관하게 허용 범위가 고정 픽셀 값을 넘지 않는다.
+         *
+         * ## 값 선택 이유 (0.15)
+         * - 수평 상한 = 480 × 0.15 = 72 px
+         *   삼등분 법칙 수평 교차점 간격 160 px 의 절반(80 px)보다 작으므로
+         *   인접 교차점의 매칭 영역이 서로 겹치지 않는다 (72 × 2 = 144 < 160).
+         * - 수직 상한 = 640 × 0.15 = 96 px
+         *   삼등분 법칙 수직 교차점 간격 214 px 의 절반(107 px)보다 작으므로
+         *   마찬가지로 인접 영역이 겹치지 않는다 (96 × 2 = 192 < 214).
+         *
+         * 값을 키우면 매칭이 쉬워지고, 줄이면 더 정밀한 위치를 요구한다.
+         */
+        private const val MATCH_MAX_HALF_RATIO = 0.15f
+
+        /**
+         * 매칭 허용 반경의 수평 상한 (픽셀).
+         * = 이미지 너비(480 px) × [MATCH_MAX_HALF_RATIO]
+         *
+         * [checkMatchState]에서 `minOf(가이드박스_절반너비, MATCH_MAX_HALF_X)` 로 사용된다.
+         * 소형 피사체(가이드 절반 < 72 px)는 피사체 크기 기준이 적용되고,
+         * 대형 피사체(가이드 절반 > 72 px)는 이 상한이 적용된다.
+         */
+        private const val MATCH_MAX_HALF_X = 480f * MATCH_MAX_HALF_RATIO  // = 72 px
+
+        /**
+         * 매칭 허용 반경의 수직 상한 (픽셀).
+         * = 이미지 높이(640 px) × [MATCH_MAX_HALF_RATIO]
+         *
+         * 수평 상한 [MATCH_MAX_HALF_X]와 동일한 원리로 적용된다.
+         */
+        private const val MATCH_MAX_HALF_Y = 640f * MATCH_MAX_HALF_RATIO  // = 96 px
 
         /**
          * 시각적 박스(OverlayView 추적 박스, guideBox)를 갱신하는 프레임 주기.
