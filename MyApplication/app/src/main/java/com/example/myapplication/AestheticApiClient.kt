@@ -38,6 +38,19 @@ object AestheticApiClient {
      */
     private const val FIELD_NAME = "file"
 
+    /**
+     * 재사용 가능한 OkHttp 클라이언트.
+     *
+     * ## 타임아웃 설정 근거
+     * - connectTimeout = 30s: 서버 응답 대기 상한. 30초 내에 연결되지 않으면 사용자에게
+     *   즉시 실패를 알리는 것이 무한 대기보다 낫다.
+     * - readTimeout    = 30s: 응답 본문 수신 대기 상한.
+     * - writeTimeout   = 60s: 이미지 파일 업로드 시간이 네트워크 환경에 따라
+     *   30초를 초과할 수 있으므로 writeTimeout만 더 길게 설정한다.
+     *
+     * 싱글턴 오브젝트 내에서 공유하므로 매 요청마다 새 클라이언트를 생성하지 않는다.
+     * OkHttp 클라이언트는 스레드 안전하며 연결 풀을 재사용하기 때문이다.
+     */
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

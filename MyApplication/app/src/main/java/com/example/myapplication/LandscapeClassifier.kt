@@ -70,30 +70,36 @@ class LandscapeClassifier(context: Context) {
      */
     fun classify(bitmap: Bitmap): LandscapeResult? {
         return try {
-            // 224×224 리사이즈
+            // ① 224×224 리사이즈
+            // 모델 입력 크기가 224×224로 고정되어 있으므로 임의 크기의 프리뷰 비트맵을 줄인다.
             val resized = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
 
-            // 비트맵 → Float32 텐서 + ImageNet 정규화
+            // ② 비트맵 → Float32 NCHW 텐서 + ImageNet 정규화
+            // TensorImageUtils가 픽셀을 [0,1]로 스케일한 뒤 MEAN/STD로 정규화한다.
+            // 학습 때 사용한 전처리와 동일해야 추론 정확도가 유지된다.
             val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resized, MEAN, STD)
 
-            // 추론
+            // ③ 추론 — forward()는 동기 블로킹 호출이다 (백그라운드 스레드에서 호출할 것)
             val outputTensor = module.forward(IValue.from(inputTensor)).toTensor()
-            val logits = outputTensor.dataAsFloatArray  // shape: [1, 9] → flat [9]
+            // dataAsFloatArray: shape [1, 9] 텐서를 flat float[9] 배열로 꺼낸다
+            val logits = outputTensor.dataAsFloatArray
 
-            // Softmax 적용
+            // ④ Softmax: 로짓을 0~1 확률 분포로 변환
+            // exp(logit_i) / Σ exp(logit_j) 수식을 그대로 구현한다.
+            // 수치 안정성(overflow)보다 단순성을 우선한다 — 모바일 모델 로짓 범위가 크지 않다.
             val expValues = logits.map { Math.exp(it.toDouble()) }
             val sumExp    = expValues.sum()
             val probs     = expValues.map { (it / sumExp).toFloat() }
 
-            // 최고 확률 클래스
+            // ⑤ 최고 확률 클래스 선택 및 0~100 점수 변환
             val topIdx   = probs.indices.maxByOrNull { probs[it] } ?: return null
-            val topProb  = probs[topIdx]
             val topLabel = labels[topIdx]
-            val score    = (topProb * 100).toInt().coerceIn(0, 100)
+            // topProb(0.0~1.0) × 100 → 정수 점수. coerceIn으로 부동소수점 오차 방어.
+            val score    = (probs[topIdx] * 100).toInt().coerceIn(0, 100)
 
             LandscapeResult(label = topLabel, score = score)
         } catch (e: Exception) {
-            null  // 추론 오류 시 조용히 무시
+            null  // 추론 오류 시 조용히 무시 — 호출부(MainActivity)에서 null 처리
         }
     }
 

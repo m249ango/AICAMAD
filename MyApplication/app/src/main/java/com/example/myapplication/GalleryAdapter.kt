@@ -44,6 +44,16 @@ class GalleryAdapter(
         return ViewHolder(view)
     }
 
+    /**
+     * 항목 하나를 ViewHolder에 바인딩한다.
+     *
+     * 썸네일은 targetSize = 400px로 샘플링하여 메모리를 절약한다.
+     * 2열 그리드에서 각 셀 너비는 최대 약 200dp(~500px)이므로
+     * 400px 샘플링으로도 화질 저하 없이 충분한 해상도가 유지된다.
+     *
+     * @param holder   재사용될 ViewHolder
+     * @param position 항목 인덱스
+     */
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
 
@@ -102,7 +112,15 @@ class GalleryAdapter(
             .also { if (it !== bitmap) bitmap.recycle() }
     }
 
-    /** 점수 구간별 색상 */
+    /**
+     * 점수 구간별 색상을 반환한다.
+     * ReviewActivity·GalleryActivity와 동일한 3단계 기준을 사용하여
+     * 앱 전체에서 일관된 색상 체계를 유지한다.
+     *
+     * - 0~59점: 빨강 (#FF5252) — 낮은 품질
+     * - 60~79점: 노랑 (#FFD740) — 보통 품질
+     * - 80~100점: 초록 (#69F0AE) — 높은 품질
+     */
     private fun scoreColor(score: Int) = when {
         score < 60 -> Color.parseColor("#FF5252")
         score < 80 -> Color.parseColor("#FFD740")

@@ -88,7 +88,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     /**
      * 터치 지점에 객체가 2개 이상 겹쳐 있을 때 호출되는 콜백.
      *
-     * [기여] 중첩 객체 선택 UI 도입.
      * MainActivity는 이 콜백을 받아 [ListPopupWindow]로 선택 UI를 표시한다.
      *
      * @param candidates  터치 지점을 포함하는 모든 감지 후보 목록
@@ -245,9 +244,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
 /**
  * 터치 지점에 중첩된 감지 후보 하나를 나타내는 데이터 클래스.
  *
- * [기여] 중첩 객체 선택 UI 도입 — [OverlayView.onMultipleDetectionsFound] 콜백에서 사용.
+ * [OverlayView.onMultipleDetectionsFound] 콜백에서 사용된다.
  *
- * @param index 감지 결과 리스트에서의 인덱스 (OverlayView.selectedIndex 설정에 사용)
+ * @param index 감지 결과 리스트에서의 인덱스 ([OverlayView.selectedIndex] 설정에 사용)
  * @param label 카테고리 이름 (예: "cat", "person")
  * @param score 신뢰도 점수 0~100 (팝업 항목 표시용)
  * @param box   바운딩 박스 (480×640 이미지 좌표계)

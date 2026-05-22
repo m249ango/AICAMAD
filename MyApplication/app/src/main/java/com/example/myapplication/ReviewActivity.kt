@@ -171,6 +171,20 @@ class ReviewActivity : AppCompatActivity() {
 
     // ── 버튼 처리 ─────────────────────────────────────────────────────────────
 
+    /**
+     * 저장·버리기 버튼의 클릭 동작을 등록한다.
+     *
+     * ## 저장 버튼
+     * [AppStorage.savePhoto]를 호출하여 임시 파일을 갤러리 디렉터리로 복사하고
+     * 4가지 메타데이터(미학 점수, 카테고리, 카테고리 점수, 촬영 모드)를 JSON으로 저장한다.
+     * 저장 완료 후 임시 파일을 즉시 삭제하여 캐시 디렉터리를 정리한다.
+     *
+     * ## 버리기 버튼
+     * 분석 결과를 무시하고 임시 파일만 삭제한 뒤 액티비티를 종료한다.
+     * 사용자가 사진 품질에 만족하지 않을 때 갤러리를 오염시키지 않도록 한다.
+     *
+     * @param tempFile [MainActivity.takePhoto]가 생성한 임시 JPEG 파일
+     */
     private fun setupButtons(tempFile: File) {
         // 저장: 4가지 메타데이터와 함께 갤러리에 보관
         binding.btnSave.setOnClickListener {
@@ -229,6 +243,12 @@ class ReviewActivity : AppCompatActivity() {
             .also { if (it !== bitmap) bitmap.recycle() }
     }
 
+    /**
+     * 액티비티 소멸 시 분석 스레드를 종료한다.
+     *
+     * [analysisExecutor]를 shutdown하지 않으면 분석이 완료되지 않은 채
+     * 스레드가 백그라운드에 살아남아 메모리 릭이 발생할 수 있다.
+     */
     override fun onDestroy() {
         super.onDestroy()
         analysisExecutor.shutdown()

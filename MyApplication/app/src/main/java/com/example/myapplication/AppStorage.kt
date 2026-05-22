@@ -35,11 +35,22 @@ import java.util.Locale
  */
 object AppStorage {
 
+    /** 갤러리 파일을 저장할 하위 디렉터리 이름. 앱 전용 저장소 내에 생성된다. */
     private const val GALLERY_DIR_NAME = "AICAMAD_gallery"
+
+    /**
+     * 저장 파일명 앞에 붙는 접두사.
+     * 갤러리 디렉터리에 다른 파일이 혼입되더라도 이 앱의 파일임을 구분할 수 있다.
+     */
     private const val FILE_PREFIX      = "AICAMAD_"
+
+    /**
+     * 파일명에 포함될 타임스탬프 형식 (예: "20240101_120000").
+     * [Locale.US]를 사용하여 기기 언어 설정과 무관하게 일정한 파일명을 생성한다.
+     */
     private const val TIMESTAMP_FORMAT = "yyyyMMdd_HHmmss"
 
-    // JSON 필드명 상수
+    // JSON 필드명 상수 — JSON 키를 한 곳에서 관리하여 오타를 방지한다.
     private const val KEY_SCORE          = "score"
     private const val KEY_CATEGORY       = "category"
     private const val KEY_CATEGORY_SCORE = "category_score"
@@ -142,7 +153,11 @@ object AppStorage {
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
-    /** JSON 파일에서 읽은 메타데이터를 담는 내부 데이터 클래스 */
+    /**
+     * JSON 파일에서 읽은 메타데이터를 담는 내부 데이터 클래스.
+     * 기본값이 설정되어 있어 이전 버전에서 저장된 파일처럼 일부 필드가 없어도
+     * [readMeta]에서 기본값으로 안전하게 처리된다 (하위 호환성 보장).
+     */
     private data class Meta(
         val score:         Int    = 0,
         val category:      String = "—",

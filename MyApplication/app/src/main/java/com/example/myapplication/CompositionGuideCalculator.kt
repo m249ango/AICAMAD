@@ -78,13 +78,32 @@ object CompositionGuideCalculator {
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
-    /** 유클리드 거리 제곱으로 가장 가까운 교차점을 탐색한다. */
+    /**
+     * 유클리드 거리 제곱으로 [center]에서 가장 가까운 교차점을 탐색한다.
+     *
+     * sqrt 연산 없이 거리 제곱을 비교하므로 연산량을 줄인다.
+     * (dist² 비교는 dist 비교와 대소 관계가 동일하다.)
+     * [points]가 비어있으면 [minByOrNull]이 null을 반환하므로 [first]로 폴백한다.
+     *
+     * @param center 피사체 중심 좌표 (480×640 이미지 좌표계)
+     * @param points 구도 교차점 목록
+     * @return [center]에서 가장 가까운 교차점
+     */
     private fun findNearest(center: PointF, points: List<PointF>): PointF =
         points.minByOrNull { p ->
             val dx = p.x - center.x; val dy = p.y - center.y; dx * dx + dy * dy
         } ?: points.first()
 
-    /** 박스가 480×640 이미지 영역을 벗어나지 않도록 위치를 클램핑한다. */
+    /**
+     * 박스가 480×640 이미지 영역을 벗어나지 않도록 위치를 클램핑한다.
+     *
+     * 교차점이 이미지 가장자리 근처일 때 동일한 크기의 박스를 그리면
+     * 이미지 경계를 초과할 수 있다. 박스 크기는 유지하면서 위치만 이동시킨다.
+     * coerceIn(0f, IMAGE_W - w)는 left가 0 미만이 되거나 right가 IMAGE_W를 초과하지 않게 한다.
+     *
+     * @param box 클램핑 전 박스 (480×640 이미지 좌표계)
+     * @return 이미지 경계 내로 이동된 박스 (크기 동일)
+     */
     private fun clampToImage(box: RectF): RectF {
         val w    = box.width()
         val h    = box.height()

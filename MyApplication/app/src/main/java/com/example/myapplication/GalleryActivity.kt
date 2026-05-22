@@ -45,7 +45,12 @@ class GalleryActivity : AppCompatActivity() {
         loadGallery()
     }
 
-    /** 갤러리 목록을 로드하여 RecyclerView에 연결한다. */
+    /**
+     * [AppStorage.getGalleryItems]에서 저장된 사진 목록을 읽어 RecyclerView에 연결한다.
+     *
+     * 항목이 없으면 빈 상태 안내 텍스트([binding.tvEmpty])를 표시하고
+     * RecyclerView를 숨긴다. 항목이 있으면 2열 그리드 레이아웃으로 표시한다.
+     */
     private fun loadGallery() {
         val items = AppStorage.getGalleryItems(this)
 
