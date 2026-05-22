@@ -31,18 +31,77 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.atan2
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private var objectDetector: ObjectDetector? = null
-    private var isObjectDetectionEnabled = true
+    /**
+     * 객체 감지 기능 활성화 여부.
+     * true → MediaPipe 실시간 감지 + OverlayView + 구도 가이드 활성.
+     * 기본값 ON: 앱 시작 시 객체 감지가 즉시 동작한다.
+     */
+    private var isObjectDetectionOn = true
 
-    // 사진 촬영을 위한 변수
+    /**
+     * 카테고리 분류 기능 활성화 여부.
+     * true → LandscapeClassifier 실시간 추론 + 우상단 점수 패널 활성.
+     * 기본값 OFF: 사용자가 명시적으로 켜야 동작한다 (모델 로드 비용 고려).
+     */
+    private var isCategoryClassificationOn = false
+
+    // ── 수준기 센서 필드 ────────────────────────────────────────────────────────
+
+    /**
+     * 시스템 센서 서비스. 중력 센서 등록/해제에 사용한다.
+     * [onResume]/[onPause]에서 리스너를 등록·해제하여 백그라운드 배터리 소모를 방지한다.
+     */
+    private lateinit var sensorManager: SensorManager
+
+    /**
+     * 중력 센서 (TYPE_GRAVITY).
+     * 하드웨어 저역통과 필터가 내장되어 있어 별도 소프트웨어 필터링이 불필요하다.
+     * 기기에 따라 null일 수 있으며, 그 경우 [accelerometerSensor]로 대체한다.
+     */
+    private var gravitySensor: Sensor? = null
+
+    /**
+     * 가속도 센서 (TYPE_ACCELEROMETER).
+     * [gravitySensor]가 없는 기기에서의 폴백.
+     * 진동 잡음이 있으므로 [onSensorChanged]에서 [LP_ALPHA]로 저역통과 필터를 적용한다.
+     */
+    private var accelerometerSensor: Sensor? = null
+
+    /**
+     * 저역통과 필터 상태 — X축 중력 성분.
+     * [accelerometerSensor] 폴백 시 진동 잡음 제거를 위해 사용한다.
+     * 초기값 0f: 직립 상태에서 X축 중력 성분은 0에 가깝다.
+     */
+    private var lpGx = 0f
+
+    /**
+     * 저역통과 필터 상태 — Y축 중력 성분.
+     * 초기값 -9.8f: 직립 portrait 상태에서 Y축은 위를 향하므로 중력은 -9.8f.
+     * 이 초기값 덕분에 첫 프레임에서 이상한 각도가 표시되지 않는다.
+     */
+    private var lpGy = -9.8f
+
+    /**
+     * CameraX 정지 사진 캡처 유즈케이스.
+     * [startCamera]에서 [ProcessCameraProvider]에 바인딩되며,
+     * [takePhoto]에서 임시 파일로 JPEG를 저장하는 데 사용한다.
+     * 카메라가 아직 초기화되지 않은 경우 null이므로 [takePhoto]에서 null 체크 후 사용한다.
+     */
     private var imageCapture: ImageCapture? = null
 
     // ── 풍경 모드 필드 ────────────────────────────────────────────────────────
@@ -120,7 +179,8 @@ class MainActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        setupTopModeButtons()
+        setupFeatureToggles()
+        setupSensor()
         setupShutterButton()
         setupCompositionButton()
         setupUnfocusButton()
@@ -191,6 +251,88 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, GalleryActivity::class.java))
         }
     }
+
+    // ── 수준기 센서 설정 ─────────────────────────────────────────────────────
+
+    /**
+     * 중력 센서(또는 가속도 센서 폴백)를 초기화한다.
+     *
+     * TYPE_GRAVITY는 하드웨어 저역통과 필터가 내장되어 있어 잡음이 적고 별도 처리가 불필요하다.
+     * 지원하지 않는 기기에서는 TYPE_ACCELEROMETER를 사용하고,
+     * [onSensorChanged]에서 소프트웨어 저역통과 필터([LP_ALPHA])를 적용하여 잡음을 줄인다.
+     */
+    private fun setupSensor() {
+        sensorManager     = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        gravitySensor     = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        if (gravitySensor == null) {
+            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            Log.d("MainActivity", "TYPE_GRAVITY 없음 — TYPE_ACCELEROMETER 폴백 사용")
+        }
+    }
+
+    /**
+     * 포그라운드 진입 시 센서 리스너를 등록한다.
+     * SENSOR_DELAY_UI (~60 ms 간격)로 수준기에 충분한 응답성을 유지하면서
+     * 불필요한 연산을 줄인다.
+     */
+    override fun onResume() {
+        super.onResume()
+        val sensor = gravitySensor ?: accelerometerSensor ?: return
+        sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+    }
+
+    /**
+     * 백그라운드 전환 시 센서 리스너를 즉시 해제하여 배터리 소모를 방지한다.
+     */
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
+    /**
+     * 중력(또는 가속도) 센서 값 갱신 시 roll 각도를 계산하여 수준기 뷰에 전달한다.
+     *
+     * ## roll 각도 계산 원리 (세로 portrait 기준)
+     * Android 센서 좌표계:
+     * - X축: 기기 오른쪽 방향
+     * - Y축: 기기 위쪽 방향
+     * - 중력 벡터: 지구 중심 방향 (아래)
+     *
+     * 완전 직립 시: gx ≈ 0, gy ≈ -9.8
+     * `atan2(gx, -gy)` = `atan2(0, 9.8)` ≈ 0°  → 수평
+     * 오른쪽으로 θ 기울면: gx > 0 → atan2 > 0 → 양수 각도 (시계 방향)
+     *
+     * TYPE_ACCELEROMETER 폴백 시 저역통과 필터를 적용한다:
+     *   filtered = α × raw + (1 − α) × filtered_prev
+     * α = [LP_ALPHA] = 0.15 → 약 400 ms 평활화 (손 떨림 제거에 적합).
+     */
+    override fun onSensorChanged(event: SensorEvent) {
+        val gx: Float
+        val gy: Float
+
+        when (event.sensor.type) {
+            Sensor.TYPE_GRAVITY -> {
+                // TYPE_GRAVITY: 하드웨어 필터 내장 → 직접 사용
+                gx = event.values[0]
+                gy = event.values[1]
+            }
+            Sensor.TYPE_ACCELEROMETER -> {
+                // TYPE_ACCELEROMETER 폴백: 소프트웨어 저역통과 필터로 잡음 제거
+                lpGx = LP_ALPHA * event.values[0] + (1f - LP_ALPHA) * lpGx
+                lpGy = LP_ALPHA * event.values[1] + (1f - LP_ALPHA) * lpGy
+                gx = lpGx
+                gy = lpGy
+            }
+            else -> return
+        }
+
+        // 세로 모드 기준 좌우 기울기 각도 (도 단위)
+        val roll = Math.toDegrees(atan2(gx.toDouble(), (-gy).toDouble())).toFloat()
+        binding.levelIndicator.update(roll)
+    }
+
+    /** 센서 정확도 변화는 수준기 판단에 영향 없으므로 무시한다. */
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     /**
      * 피사체 포커스를 해제하고 일반 모드로 복귀한다.
@@ -448,40 +590,63 @@ class MainActivity : AppCompatActivity() {
 
     // ── 기존 UI 설정 ────────────────────────────────────────────────────────────
 
-    private fun setupTopModeButtons() {
-        // 풍경 모드: 구도 분류 AI 추론 + 우상단 결과 표시
-        binding.btnLandscapeMode.setOnClickListener {
-            isObjectDetectionEnabled = false
-            binding.btnObjectMode.alpha = 0.5f
-            binding.btnLandscapeMode.alpha = 1.0f
-            binding.overlayView.visibility = View.GONE
+    /**
+     * 객체 감지 토글과 카테고리 분류 토글을 독립적으로 설정한다.
+     *
+     * 두 토글은 상호 배타적이지 않으며, 동시에 활성화할 수 있다.
+     *
+     * ## 객체 감지 토글 (btnObjectMode)
+     * - ON  → OverlayView 표시, MediaPipe 실시간 감지 활성화
+     * - OFF → OverlayView 숨김, 피사체 선택·가이드 전체 초기화
+     *
+     * ## 카테고리 분류 토글 (btnLandscapeMode)
+     * - ON  → 점수 패널 표시, LandscapeClassifier 지연 초기화 (최초 1회)
+     * - OFF → 점수 패널 숨김, 추론 비활성화 (모델은 메모리에 유지)
+     *
+     * 아이콘 알파값으로 ON/OFF 상태를 표시한다 (1.0 = ON, 0.4 = OFF).
+     */
+    private fun setupFeatureToggles() {
 
-            // 사물 모드 관련 상태 초기화
-            unfocusSubject()
+        // ── 객체 감지 토글 ──────────────────────────────────────────────────────
+        binding.btnObjectMode.setOnClickListener {
+            isObjectDetectionOn = !isObjectDetectionOn
+            binding.btnObjectMode.alpha = if (isObjectDetectionOn) 1.0f else 0.4f
 
-            // 풍경 점수 패널 표시 및 초기화
-            binding.landscapeScoreLayout.visibility = View.VISIBLE
-            binding.tvCompositionName.text = "분석 중…"
-            binding.tvLandscapeScore.text  = "—"
-
-            // 분류기 지연 초기화 (최초 1회만 모델 로드)
-            if (landscapeClassifier == null) {
-                cameraExecutor.execute {
-                    landscapeClassifier = LandscapeClassifier(this)
-                }
+            if (isObjectDetectionOn) {
+                binding.overlayView.visibility = View.VISIBLE
+            } else {
+                // 객체 감지를 끄면 OverlayView를 숨기고 피사체 선택 상태를 초기화한다.
+                binding.overlayView.visibility = View.GONE
+                unfocusSubject()
             }
 
-            Toast.makeText(this, "풍경 촬영 모드", Toast.LENGTH_SHORT).show()
+            val msg = if (isObjectDetectionOn) "객체 감지 ON" else "객체 감지 OFF"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
-        // 사물 모드: 풍경 패널 숨김
-        binding.btnObjectMode.setOnClickListener {
-            isObjectDetectionEnabled = true
-            binding.btnObjectMode.alpha = 1.0f
-            binding.btnLandscapeMode.alpha = 0.5f
-            binding.overlayView.visibility = View.VISIBLE
-            binding.landscapeScoreLayout.visibility = View.GONE
-            Toast.makeText(this, "사물 인식 모드", Toast.LENGTH_SHORT).show()
+        // ── 카테고리 분류 토글 ──────────────────────────────────────────────────
+        binding.btnLandscapeMode.setOnClickListener {
+            isCategoryClassificationOn = !isCategoryClassificationOn
+            binding.btnLandscapeMode.alpha = if (isCategoryClassificationOn) 1.0f else 0.4f
+
+            if (isCategoryClassificationOn) {
+                // 점수 패널을 표시하고 분류기를 지연 초기화한다.
+                // 모델 로드는 최초 1회만 수행되므로 이후 ON/OFF 전환은 즉시 이루어진다.
+                binding.landscapeScoreLayout.visibility = View.VISIBLE
+                binding.tvCompositionName.text = "분석 중…"
+                binding.tvLandscapeScore.text  = "—"
+
+                if (landscapeClassifier == null) {
+                    cameraExecutor.execute {
+                        landscapeClassifier = LandscapeClassifier(this)
+                    }
+                }
+            } else {
+                binding.landscapeScoreLayout.visibility = View.GONE
+            }
+
+            val msg = if (isCategoryClassificationOn) "카테고리 분류 ON" else "카테고리 분류 OFF"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -526,13 +691,17 @@ class MainActivity : AppCompatActivity() {
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     Log.d("CameraApp", "임시 캡처 저장: ${tempFile.absolutePath}")
+                    // 활성화된 기능 조합을 메타데이터 문자열로 구성하여 전달한다.
+                    // 두 토글이 독립적이므로 네 가지 조합이 가능하다.
+                    val modeStr = when {
+                        isObjectDetectionOn && isCategoryClassificationOn -> "객체+카테고리"
+                        isObjectDetectionOn                               -> "객체 감지"
+                        isCategoryClassificationOn                        -> "카테고리 분류"
+                        else                                              -> "기본"
+                    }
                     val intent = Intent(this@MainActivity, ReviewActivity::class.java).apply {
                         putExtra(ReviewActivity.EXTRA_TEMP_FILE_PATH, tempFile.absolutePath)
-                        // 현재 활성 모드를 메타데이터로 전달
-                        putExtra(
-                            ReviewActivity.EXTRA_MODE,
-                            if (isObjectDetectionEnabled) "사물" else "풍경"
-                        )
+                        putExtra(ReviewActivity.EXTRA_MODE, modeStr)
                     }
                     startActivity(intent)
                 }
@@ -565,7 +734,7 @@ class MainActivity : AppCompatActivity() {
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                // 사물 모드와 풍경 모드 모두 detectObjects에서 분기 처리
+                // 토글 상태에 따라 객체 감지·카테고리 분류를 독립적으로 실행
                 detectObjects(imageProxy)
             }
             try {
@@ -616,7 +785,7 @@ class MainActivity : AppCompatActivity() {
      * [기여] 느린 박스 업데이트 및 피사체만 표시 기능 도입.
      */
     private fun onDetectionResult(result: ObjectDetectorResult) {
-        if (!isObjectDetectionEnabled) return
+        if (!isObjectDetectionOn) return
 
         if (selectedSubjectLabel == null) {
             // ── 일반 모드: 모든 박스를 OverlayView에 표시 ──────────────────────
@@ -662,16 +831,20 @@ class MainActivity : AppCompatActivity() {
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         imageProxy.close()
 
-        if (isObjectDetectionEnabled) {
-            // ── 사물 모드: MediaPipe 객체 감지 ──────────────────────────────
-            if (objectDetector == null) return
+        // ── 객체 감지 토글 ON: MediaPipe 실시간 감지 ───────────────────────────
+        // 두 기능은 독립적이므로 동시에 실행될 수 있다.
+        // detectAsync는 비동기로 처리되므로 아래 카테고리 분류와 병렬 실행된다.
+        if (isObjectDetectionOn && objectDetector != null) {
             objectDetector?.detectAsync(
                 BitmapImageBuilder(rotatedBitmap).build(),
                 System.currentTimeMillis()
             )
-        } else {
-            // ── 풍경 모드: PyTorch Mobile 구도 분류 ─────────────────────────
-            // 분류기가 아직 초기화되지 않았거나 이전 추론이 진행 중이면 프레임을 건너뜀
+        }
+
+        // ── 카테고리 분류 토글 ON: PyTorch Mobile 구도 분류 ─────────────────────
+        // 분류기가 초기화되지 않았거나 이전 추론이 진행 중이면 이 프레임을 건너뜀.
+        // classify()는 동기 호출이므로 isInferenceRunning 플래그로 중복 실행을 방지한다.
+        if (isCategoryClassificationOn) {
             val classifier = landscapeClassifier ?: return
             if (!isInferenceRunning.compareAndSet(false, true)) return
 
@@ -723,6 +896,22 @@ class MainActivity : AppCompatActivity() {
 
         /** 피사체가 가이드 박스 안에 유지되어야 하는 최소 시간 (밀리초) */
         private const val MATCH_HOLD_MS = 2000L
+
+        /**
+         * TYPE_ACCELEROMETER 폴백 시 적용하는 저역통과 필터 계수 (0 < α ≤ 1).
+         *
+         * ## 동작 원리
+         * filtered_t = α × raw_t + (1 − α) × filtered_(t-1)
+         * α가 작을수록 이전 값을 많이 반영해 부드럽지만 응답이 느려진다.
+         * α가 클수록 원시 값에 가까워 빠르지만 잡음이 많다.
+         *
+         * ## 값 선택 이유 (0.15)
+         * SENSOR_DELAY_UI 기준 업데이트 간격 ≈ 60 ms.
+         * α = 0.15이면 시정수 τ ≈ 60 / (-ln(1-0.15)) ≈ 380 ms.
+         * 손 떨림(~5-10 Hz) 제거에 적합하며, 천천히 기울이는 동작(< 1 Hz)은 충분히 추적한다.
+         * TYPE_GRAVITY는 하드웨어 필터가 있어 이 값을 사용하지 않는다.
+         */
+        private const val LP_ALPHA = 0.15f
 
         /**
          * 매칭 판정 허용 반경의 상한 비율 (이미지 크기 대비).
