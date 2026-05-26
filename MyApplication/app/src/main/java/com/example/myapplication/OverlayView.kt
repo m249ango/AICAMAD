@@ -86,7 +86,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     var onDetectionSelected: ((index: Int, box: RectF, label: String) -> Unit)? = null
 
     /**
-     * 터치 지점에 객체가 2개 이상 겹쳐 있을 때 호출되는 콜백.
+     * 터치 지점에 객체가 2개 이상 겹쳐 있을 때 호출되는 콜백.    
      *
      * MainActivity는 이 콜백을 받아 [ListPopupWindow]로 선택 UI를 표시한다.
      *

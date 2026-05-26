@@ -632,56 +632,70 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
      * 객체 감지 토글과 카테고리 분류 토글을 독립적으로 설정한다.
      *
      * 두 토글은 상호 배타적이지 않으며, 동시에 활성화할 수 있다.
+     * XML에서 switchObjectMode(checked=true)·switchLandscapeMode(checked=false)로
+     * 초기 상태가 지정되어 있으므로 여기서는 리스너만 연결한다.
      *
-     * ## 객체 감지 토글 (btnObjectMode)
+     * ## 객체 감지 토글 (switchObjectMode)
      * - ON  → OverlayView 표시, MediaPipe 실시간 감지 활성화
-     * - OFF → OverlayView 숨김, 피사체 선택·가이드 전체 초기화
+     * - OFF → OverlayView 숨김, 피사체 선택·구도 가이드 전체 초기화
      *
-     * ## 카테고리 분류 토글 (btnLandscapeMode)
-     * - ON  → 점수 패널 표시, LandscapeClassifier 지연 초기화 (최초 1회)
-     * - OFF → 점수 패널 숨김, 추론 비활성화 (모델은 메모리에 유지)
+     * ## 카테고리 분류 토글 (switchLandscapeMode)
+     * - ON  → 분류 상태 패널 표시, LandscapeClassifier 지연 초기화 (최초 1회)
+     * - OFF → 분류 상태 패널 숨김, 추론 비활성화 (모델은 메모리에 유지)
      *
-     * 아이콘 알파값으로 ON/OFF 상태를 표시한다 (1.0 = ON, 0.4 = OFF).
+     * SwitchCompat은 내부적으로 체크 상태를 관리하므로 별도 알파·아이콘 조작이 불필요하다.
      */
     private fun setupFeatureToggles() {
 
         // ── 객체 감지 토글 ──────────────────────────────────────────────────────
-        binding.btnObjectMode.setOnClickListener {
-            isObjectDetectionOn = !isObjectDetectionOn
-            binding.btnObjectMode.alpha = if (isObjectDetectionOn) 1.0f else 0.4f
+        // isChecked: 토글이 ON이면 true, OFF이면 false.
+        // 사용자가 스위치를 누를 때마다 SwitchCompat이 isChecked를 자동으로 반전시킨다.
+        binding.switchObjectMode.setOnCheckedChangeListener { _, isChecked ->
+            isObjectDetectionOn = isChecked
 
-            if (isObjectDetectionOn) {
+            if (isChecked) {
+                // 객체 감지 ON → OverlayView 다시 표시
                 binding.overlayView.visibility = View.VISIBLE
             } else {
+                // 객체 감지 OFF → OverlayView 숨김, 피사체 선택 및 가이드 초기화
                 binding.overlayView.visibility = View.GONE
                 unfocusSubject()
             }
 
-            val msg = if (isObjectDetectionOn) "객체 감지 ON" else "객체 감지 OFF"
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                if (isChecked) "객체 감지 ON" else "객체 감지 OFF",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         // ── 카테고리 분류 토글 ──────────────────────────────────────────────────
-        binding.btnLandscapeMode.setOnClickListener {
-            isCategoryClassificationOn = !isCategoryClassificationOn
-            binding.btnLandscapeMode.alpha = if (isCategoryClassificationOn) 1.0f else 0.4f
+        binding.switchLandscapeMode.setOnCheckedChangeListener { _, isChecked ->
+            isCategoryClassificationOn = isChecked
 
-            if (isCategoryClassificationOn) {
+            if (isChecked) {
+                // 카테고리 분류 ON → 패널 표시 + LandscapeClassifier 지연 로딩
                 binding.landscapeScoreLayout.visibility = View.VISIBLE
                 binding.tvCompositionName.text = "분석 중…"
                 binding.tvLandscapeScore.text  = "—"
 
+                // 모델 초기화가 아직 안 된 경우에만 백그라운드에서 로드한다.
+                // 이미 초기화된 경우 재로드 없이 추론이 즉시 재개된다.
                 if (landscapeClassifier == null) {
                     cameraExecutor.execute {
                         landscapeClassifier = LandscapeClassifier(this)
                     }
                 }
             } else {
+                // 카테고리 분류 OFF → 패널 숨김 (모델은 메모리에 유지하여 재진입 시 빠르게 재개)
                 binding.landscapeScoreLayout.visibility = View.GONE
             }
 
-            val msg = if (isCategoryClassificationOn) "카테고리 분류 ON" else "카테고리 분류 OFF"
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                if (isChecked) "카테고리 분류 ON" else "카테고리 분류 OFF",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -924,21 +938,31 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     /**
      * 풍경 모드 추론 결과를 UI에 반영한다. UI 스레드에서 실행된다.
      *
-     * 점수에 따라 텍스트 색상을 변경한다:
-     * - 0~59점: 빨강 (#FF5252)
-     * - 60~79점: 노랑 (#FFD740)
-     * - 80~100점: 초록 (#69F0AE)
+     * 수치 점수 대신 3단계 정성적 상태 레이블을 표시하여 사용자가 직관적으로 구도를 파악하도록 한다.
+     *
+     * ## 상태 기준 (softmax 확률 × 100)
+     * | 점수 범위 | 상태 레이블 | 색상       |
+     * |-----------|-------------|------------|
+     * | 0 ~ 59    | 불안정      | #FF5252 (빨강) |
+     * | 60 ~ 79   | 안정        | #FFD740 (노랑) |
+     * | 80 ~ 100  | 최적        | #69F0AE (초록) |
+     *
+     * [tvCompositionName]에는 구도 이름(예: "삼등분 법칙"),
+     * [tvLandscapeScore]에는 상태 레이블(예: "최적")이 표시된다.
+     * 두 TextView 모두 동일한 색상을 적용하여 시각적 일관성을 유지한다.
      */
     private fun updateLandscapeScore(result: LandscapeResult) {
         runOnUiThread {
+            // 구도 이름은 그대로 표시
             binding.tvCompositionName.text = result.label
-            binding.tvLandscapeScore.text  = "${result.score}점"
 
-            val color = when {
-                result.score < 60 -> Color.parseColor("#FF5252")
-                result.score < 80 -> Color.parseColor("#FFD740")
-                else              -> Color.parseColor("#69F0AE")
+            // 점수 → 상태 레이블 + 색상 결정
+            val (stateText, color) = when {
+                result.score < 60 -> "불안정" to Color.parseColor("#FF5252")
+                result.score < 80 -> "안정"   to Color.parseColor("#FFD740")
+                else              -> "최적"   to Color.parseColor("#69F0AE")
             }
+            binding.tvLandscapeScore.text = stateText
             binding.tvCompositionName.setTextColor(color)
             binding.tvLandscapeScore.setTextColor(color)
         }
