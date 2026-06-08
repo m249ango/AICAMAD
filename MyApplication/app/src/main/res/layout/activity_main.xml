@@ -8,10 +8,14 @@
 
     <!--
         상단 기능 토글 바.
-        좌측: 객체 감지 토글 (btnObjectMode) — MediaPipe 감지 + 구도 가이드
-        우측: 카테고리 분류 토글 (btnLandscapeMode) — LandscapeClassifier 추론 + 점수 패널
-        두 토글은 독립적으로 ON/OFF 가능하며 동시 활성화도 지원한다.
-        아이콘 알파 1.0 = ON, 0.4 = OFF (기본: 객체 감지 ON, 카테고리 분류 OFF).
+        아이콘 버튼 대신 SwitchCompat 토글 스위치를 사용하여 더 작은 공간에서
+        ON/OFF 상태를 명확하게 표시한다.
+
+        좌측: 객체 감지 (switchObjectMode) — 기본 ON
+        구분선
+        우측: 카테고리 분류 (switchLandscapeMode) — 기본 OFF
+
+        두 토글은 독립적이며 동시 활성화를 지원한다.
     -->
     <LinearLayout
         android:id="@+id/topBar"
@@ -19,30 +23,65 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
-        android:paddingTop="30dp"
-        android:paddingBottom="20dp"
+        android:paddingTop="28dp"
+        android:paddingBottom="16dp"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ImageButton
-            android:id="@+id/btnObjectMode"
-            android:layout_width="@dimen/mode_icon_size"
-            android:layout_height="@dimen/mode_icon_size"
-            android:layout_marginEnd="25dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_object_mode"
-            android:scaleType="fitCenter"
-            app:tint="@android:color/white" />
+        <!-- 객체 감지 토글 그룹: 라벨 + 스위치 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <ImageButton
-            android:id="@+id/btnLandscapeMode"
-            android:layout_width="@dimen/mode_icon_size"
-            android:layout_height="@dimen/mode_icon_size"
-            android:layout_marginStart="25dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_landscape_mode"
-            android:scaleType="fitCenter"
-            android:alpha="0.5"
-            app:tint="@android:color/white" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="객체 감지"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:layout_marginEnd="6dp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchObjectMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+        </LinearLayout>
+
+        <!--
+            구분선: 두 토글 그룹 사이를 시각적으로 분리한다.
+            alpha=0.3으로 배경보다 부드럽게 처리하여 강조를 줄인다.
+        -->
+        <View
+            android:layout_width="1dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:background="#FFFFFF"
+            android:alpha="0.3" />
+
+        <!-- 카테고리 분류 토글 그룹: 라벨 + 스위치 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="카테고리 분류"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:layout_marginEnd="6dp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchLandscapeMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="false" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- 카메라 프리뷰 -->
@@ -88,7 +127,7 @@
             android:textStyle="bold"
             android:includeFontPadding="false" />
 
-        <!-- 0~100 점수 -->
+        <!-- 분류 상태 표시 (불안정 / 안정 / 최적) -->
         <TextView
             android:id="@+id/tvLandscapeScore"
             android:layout_width="wrap_content"
@@ -97,7 +136,6 @@
             android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:fontFamily="monospace"
             android:includeFontPadding="false" />
     </LinearLayout>
 

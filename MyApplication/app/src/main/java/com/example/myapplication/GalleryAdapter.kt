@@ -12,31 +12,15 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-/**
- * 앱 전용 갤러리의 사진 목록을 2열 그리드로 표시하는 RecyclerView 어댑터.
- *
- * 각 항목은 썸네일 이미지와 우하단 점수 오버레이로 구성된다.
- * 점수 색상은 구간별로 다르게 표시된다:
- * - 0~59점: 빨강 (#FF5252)
- * - 60~79점: 노랑 (#FFD740)
- * - 80~100점: 초록 (#69F0AE)
- *
- * @param items      표시할 [GalleryItem] 목록 (최신순 정렬 권장)
- * @param onItemClick 항목 클릭 콜백 — [GalleryActivity]에서 상세 보기에 사용
- */
 class GalleryAdapter(
     private val items: List<GalleryItem>,
     private val onItemClick: (GalleryItem) -> Unit
 ) : RecyclerView.Adapter<GalleryAdapter.ViewHolder>() {
 
-    // ── ViewHolder ─────────────────────────────────────────────────────────────
-
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val ivThumbnail: ImageView = view.findViewById(R.id.ivThumbnail)
         val tvItemScore: TextView  = view.findViewById(R.id.tvItemScore)
     }
-
-    // ── RecyclerView.Adapter ──────────────────────────────────────────────────
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -44,40 +28,17 @@ class GalleryAdapter(
         return ViewHolder(view)
     }
 
-    /**
-     * 항목 하나를 ViewHolder에 바인딩한다.
-     *
-     * 썸네일은 targetSize = 400px로 샘플링하여 메모리를 절약한다.
-     * 2열 그리드에서 각 셀 너비는 최대 약 200dp(~500px)이므로
-     * 400px 샘플링으로도 화질 저하 없이 충분한 해상도가 유지된다.
-     *
-     * @param holder   재사용될 ViewHolder
-     * @param position 항목 인덱스
-     */
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
-
-        // 썸네일: 메모리 절약을 위해 작은 크기로 샘플링
-        val bitmap = decodeSampledBitmap(item, targetSize = 400)
-        holder.ivThumbnail.setImageBitmap(bitmap)
-
-        // 점수 오버레이
+        holder.ivThumbnail.setImageBitmap(decodeSampledBitmap(item, targetSize = 400))
         holder.tvItemScore.text = "${item.score}점"
         holder.tvItemScore.setTextColor(scoreColor(item.score))
-
-        // 클릭
         holder.itemView.setOnClickListener { onItemClick(item) }
     }
 
     override fun getItemCount() = items.size
 
-    // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
-
-    /**
-     * 파일에서 [targetSize] 픽셀 이하로 샘플링하여 비트맵을 디코딩한다.
-     * 전체 해상도 원본을 한꺼번에 메모리에 올리지 않아 OOM을 방지한다.
-     * EXIF 회전 정보를 적용하여 항상 올바른 방향으로 반환한다.
-     */
+    // OOM 방지: targetSize 이하로 다운샘플링 후 디코딩
     private fun decodeSampledBitmap(item: GalleryItem, targetSize: Int): Bitmap? {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(item.file.absolutePath, opts)
@@ -93,10 +54,7 @@ class GalleryAdapter(
         return applyExifRotation(raw, item.file)
     }
 
-    /**
-     * EXIF 회전 정보를 읽어 비트맵을 올바른 방향으로 회전한다.
-     * CameraX JPEG는 픽셀을 회전하지 않고 EXIF 에만 방향을 기록하므로 표시 전 보정이 필요하다.
-     */
+    // CameraX JPEG는 픽셀을 회전하지 않고 EXIF에만 방향을 기록
     private fun applyExifRotation(bitmap: Bitmap, file: java.io.File): Bitmap {
         val degrees = when (
             ExifInterface(file.absolutePath)
@@ -112,15 +70,6 @@ class GalleryAdapter(
             .also { if (it !== bitmap) bitmap.recycle() }
     }
 
-    /**
-     * 점수 구간별 색상을 반환한다.
-     * ReviewActivity·GalleryActivity와 동일한 3단계 기준을 사용하여
-     * 앱 전체에서 일관된 색상 체계를 유지한다.
-     *
-     * - 0~59점: 빨강 (#FF5252) — 낮은 품질
-     * - 60~79점: 노랑 (#FFD740) — 보통 품질
-     * - 80~100점: 초록 (#69F0AE) — 높은 품질
-     */
     private fun scoreColor(score: Int) = when {
         score < 60 -> Color.parseColor("#FF5252")
         score < 80 -> Color.parseColor("#FFD740")
