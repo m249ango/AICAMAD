@@ -71,7 +71,7 @@ class LandscapeClassifier(context: Context) {
     }
 
     companion object {
-        private const val MODEL_FILE = "new_efficientnet_lite0.tflite"
+        private const val MODEL_FILE = "efficientnet_lite0.tflite"
         private const val INPUT_SIZE = 224
     }
 }
